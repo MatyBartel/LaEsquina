@@ -1,0 +1,17 @@
+<div class="toast-container" *ngIf="(toast.messages$ | async) as messages">
+  <div class="toast" *ngFor="let m of messages" [class]="'toast ' + m.type">
+    <span class="text">{{ m.text }}</span>
+    <ng-container *ngIf="m.isConfirm; else simpleClose">
+      <div class="actions">
+        <button class="btn small cancel" (click)="toast.resolveConfirm(m.id, false)">Cancelar</button>
+        <button class="btn small primary" (click)="toast.resolveConfirm(m.id, true)">Confirmar</button>
+      </div>
+    </ng-container>
+    <ng-template #simpleClose>
+      <button class="close" (click)="toast.dismiss(m.id)">×</button>
+    </ng-template>
+  </div>
+  <div *ngIf="!messages.length" class="hidden"></div>
+  
+</div>
+

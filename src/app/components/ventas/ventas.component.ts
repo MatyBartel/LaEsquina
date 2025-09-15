@@ -1,0 +1,601 @@
+import { Component, OnDestroy, OnInit } from '@angular/core';
+import { CommonModule } from '@angular/common';
+import { IconComponent } from '../icon/icon.component';
+import { FormsModule } from '@angular/forms';
+import { DatabaseService, Producto, Venta, VentaProducto, PagoVenta } from '../../services/database.service';
+import { Subscription } from 'rxjs';
+import { ToastService } from '../../services/toast.service';
+type VentaProductoExt = VentaProducto & { editCantidad?: string };
+type PagoVentaExt = PagoVenta & { montoStr?: string };
+
+@Component({
+  selector: 'app-ventas',
+  standalone: true,
+  imports: [CommonModule, FormsModule, IconComponent],
+  templateUrl: './ventas.component.html',
+  styleUrls: ['./ventas.component.scss']
+})
+export class VentasComponent implements OnInit, OnDestroy {
+  productos: Producto[] = [];
+  filtro = '';
+  carrito: VentaProductoExt[] = [];
+  pagos: PagoVentaExt[] = [];
+  vendedor = 'Vendedor 1';
+  cliente = '';
+  private sub?: Subscription;
+  ventaAEliminar: Venta | null = null;
+  restockConfirm = true;
+  fechaSeleccionada: string = '';
+  mostrarCalendario = false;
+  descuentoPct: number = 0;
+  descuentoMonto: number = 0;
+  vendedores: string[] = [];
+  nuevoVendedorNombre: string = '';
+  mostrarNuevoVendedor = false;
+  mostrarResumenVenta = false;
+  ahora: Date = new Date();
+  aplicarRedondeo = false;
+
+  constructor(private db: DatabaseService, private toast: ToastService) {}
+
+  ngOnInit(): void {
+    this.sub = this.db.getProductos().subscribe(items => (this.productos = items));
+    this.db.getVendedores().subscribe(vs => {
+      this.vendedores = vs;
+      if (!this.vendedores.includes(this.vendedor) && this.vendedores.length) {
+        this.vendedor = this.vendedores[0];
+      }
+    });
+    this.pagos = [{ metodo: 'Efectivo', monto: 0, montoStr: '' }];
+  }
+
+  ngOnDestroy(): void {
+    this.sub?.unsubscribe();
+  }
+
+  get productosFiltrados(): Producto[] {
+    const t = (this.filtro || '').toLowerCase();
+    return this.productos.filter(p =>
+      p.nombre.toLowerCase().includes(t) || p.codigo.toLowerCase().includes(t)
+    );
+  }
+
+  agregarAlCarrito(p: Producto): void {
+    if ((p.stock || 0) <= 0) {
+      this.toast.show('Sin stock disponible para este producto', 'warning');
+      return;
+    }
+    const existente = this.carrito.find(vp => vp.productoId === p.id);
+    if (existente) {
+      if (existente.cantidad + 1 > (p.stock || 0)) {
+        this.toast.show('Stock insuficiente', 'warning');
+        return;
+      }
+      existente.cantidad += 1;
+      existente.subtotal = existente.cantidad * existente.precioUnitario;
+      (existente as any).editCantidad = String(existente.cantidad);
+    } else {
+      this.carrito.push({
+        productoId: p.id!,
+        codigo: p.codigo,
+        nombre: p.nombre,
+        cantidad: 1,
+        precioUnitario: p.precio,
+        subtotal: p.precio,
+        editCantidad: '1' as any,
+      } as any);
+    }
+  }
+
+  quitarDelCarrito(vp: VentaProductoExt): void {
+    this.carrito = this.carrito.filter(x => x !== vp);
+  }
+
+  actualizarCantidad(vp: VentaProductoExt): void {
+    if (vp.cantidad <= 0) vp.cantidad = 0.001;
+    const prod = this.db.getProductoById(vp.productoId);
+    if (prod && vp.cantidad > (prod.stock || 0)) {
+      vp.cantidad = prod.stock;
+      this.toast.show('Se ajustó a stock disponible', 'info');
+    }
+    // Redondear a pesos enteros
+    vp.subtotal = Math.round(vp.cantidad * vp.precioUnitario);
+  }
+
+  onCantidadChange(vp: VentaProductoExt, value: string): void {
+    // Al escribir, no forzamos decimales; solo saneamos y guardamos en editCantidad
+    const raw = (value || '').replace(/,/g, '.').replace(/[^0-9.]/g, '');
+    const parts = raw.split('.');
+    const normalized = parts.length > 2 ? parts[0] + '.' + parts.slice(1).join('') : raw;
+    (vp as any).editCantidad = normalized;
+  }
+
+  onCantidadBlur(vp: VentaProductoExt): void {
+    const text = String((vp as any).editCantidad ?? vp.cantidad ?? '');
+    const val = Number(text || '');
+    if (!isFinite(val) || val <= 0) {
+      (vp as any).editCantidad = String(vp.cantidad);
+      return;
+    }
+    vp.cantidad = Math.max(0.001, Number(val.toFixed(3)));
+    (vp as any).editCantidad = String(vp.cantidad);
+    this.actualizarCantidad(vp);
+  }
+
+  get subtotalCarrito(): number {
+    return this.carrito.reduce((acc, x) => acc + Math.round(x.subtotal), 0);
+  }
+
+  get totalCarrito(): number {
+    const subtotal = this.subtotalCarrito;
+    const desc = Math.max(0, Math.min(100, Number(this.descuentoPct || 0)));
+    const monto = Math.round((subtotal * desc) / 100);
+    this.descuentoMonto = monto;
+    return Math.max(0, subtotal - monto);
+  }
+
+  get redondeoCarrito(): number {
+    if (!this.aplicarRedondeo) return 0;
+    const total = Math.max(0, Math.round(this.totalCarrito));
+    const resto = total % 100;
+    if (resto <= 50) {
+      const falt50 = 50 - resto;
+      if (falt50 > 0 && falt50 <= 20) return falt50;
+    }
+    const falt100 = resto === 0 ? 0 : (100 - resto);
+    return falt100 > 0 && falt100 <= 40 ? falt100 : 0;
+  }
+
+  get totalConRedondeo(): number {
+    return Math.max(0, Math.round(this.totalCarrito + this.redondeoCarrito));
+  }
+
+  get totalPagos(): number {
+    return this.pagos.reduce((acc, p) => acc + Math.round(Number(p.monto || 0)), 0);
+  }
+
+  get totalPagosEfectivo(): number {
+    return this.pagos.reduce((acc, p) => acc + (p.metodo === 'Efectivo' ? Math.round(Number(p.monto || 0)) : 0), 0);
+  }
+
+  get totalPagosNoEfectivo(): number {
+    return this.pagos.reduce((acc, p) => acc + (p.metodo !== 'Efectivo' ? Math.round(Number(p.monto || 0)) : 0), 0);
+  }
+
+  get restante(): number {
+    return Math.max(0, this.totalConRedondeo - this.totalPagos);
+  }
+
+  get vuelto(): number {
+    const noEfectivo = this.totalPagosNoEfectivo;
+    const necesarioConEfectivo = Math.max(0, this.totalConRedondeo - noEfectivo);
+    const cambio = this.totalPagosEfectivo - necesarioConEfectivo;
+    return Math.max(0, Math.round(cambio));
+  }
+
+  get estaBalanceado(): boolean {
+    return (this.totalPagos + 0.009) >= this.totalConRedondeo && this.totalConRedondeo > 0;
+  }
+
+  get pagosPorMetodoActual(): { metodo: string; total: number }[] {
+    const mapa = new Map<string, number>();
+    for (const p of this.pagos) {
+      const key = (p.metodo || 'Desconocido').trim();
+      mapa.set(key, (mapa.get(key) || 0) + Number(p.monto || 0));
+    }
+    return Array.from(mapa.entries()).map(([metodo, total]) => ({ metodo, total }));
+  }
+
+  agregarPago(): void {
+    this.pagos.push({ metodo: 'Efectivo', monto: 0 });
+  }
+
+  quitarPago(p: PagoVenta): void {
+    this.pagos = this.pagos.filter(x => x !== p);
+  }
+
+  rellenarPago(p: PagoVenta): void {
+    if (p.metodo === 'Efectivo') {
+      const faltante = this.totalConRedondeo - this.totalPagos;
+      if (faltante > 0) {
+        const nuevo = Math.round(Number(p.monto || 0)) + faltante;
+        p.monto = nuevo;
+        (p as any).montoStr = this.formatPeso(nuevo);
+      }
+      return;
+    }
+    const sumaEfectivo = this.totalPagosEfectivo;
+    const sumaNoEfectivoExcl = this.pagos
+      .filter(x => x !== p && x.metodo !== 'Efectivo')
+      .reduce((acc, x) => acc + Math.round(Number(x.monto || 0)), 0);
+    const permitido = Math.max(0, this.totalConRedondeo - sumaEfectivo - sumaNoEfectivoExcl);
+    if (permitido > 0) {
+      const nuevo = Math.round(permitido);
+      p.monto = nuevo;
+      (p as any).montoStr = this.formatPeso(nuevo);
+    }
+  }
+
+  onMetodoPagoChange(p: PagoVenta): void {
+    this.onPagoChange(p);
+  }
+
+  onPagoChange(p: PagoVenta): void {
+    if (p.metodo === 'Efectivo') {
+      // Efectivo puede exceder por vuelto; redondear a pesos
+      p.monto = Math.max(0, Math.round(Number(p.monto || 0)));
+      (p as any).montoStr = p.monto.toLocaleString('es-AR');
+      return;
+    }
+    const sumaNoEfectivoExcl = this.pagos
+      .filter(x => x !== p && x.metodo !== 'Efectivo')
+      .reduce((acc, x) => acc + Math.round(Number(x.monto || 0)), 0);
+    const sumaEfectivo = this.totalPagosEfectivo;
+    const maxParaEste = Math.max(0, this.totalConRedondeo - sumaEfectivo - sumaNoEfectivoExcl);
+    const actual = Math.round(Number(p.monto || 0));
+    if (actual > maxParaEste) {
+      p.monto = maxParaEste;
+    } else if (actual < 0) {
+      p.monto = 0;
+    } else {
+      p.monto = actual;
+    }
+    (p as any).montoStr = p.monto.toLocaleString('es-AR');
+  }
+
+  onPagoInput(p: PagoVentaExt, ev: Event): void {
+    const input = ev.target as HTMLInputElement;
+    const digits = (input.value || '').replace(/\D+/g, '');
+    const val = digits ? parseInt(digits, 10) : 0;
+    p.monto = val;
+    p.montoStr = val.toLocaleString('es-AR');
+  }
+
+  onPagoBlur(p: PagoVentaExt): void {
+    const val = Math.max(0, Math.round(Number(p.monto || 0)));
+    p.monto = val;
+    p.montoStr = val.toLocaleString('es-AR');
+    this.onPagoChange(p);
+  }
+
+  private formatPeso(n: number): string {
+    return Math.max(0, Math.round(Number(n || 0))).toLocaleString('es-AR');
+  }
+
+  abrirResumenVenta(): void {
+    if (!this.carrito.length) {
+      this.toast.show('Agrega productos a la venta', 'warning');
+      return;
+    }
+    const total = this.totalConRedondeo;
+    if ((this.totalPagos + 0.009) < total) {
+      this.toast.show('El total de pagos no coincide con el total de la venta', 'warning');
+      return;
+    }
+    this.ahora = new Date();
+    this.mostrarResumenVenta = true;
+  }
+
+  cerrarResumenVenta(): void {
+    this.mostrarResumenVenta = false;
+  }
+
+  guardarVenta(): void {
+    if (!this.carrito.length) {
+      this.toast.show('Agrega productos a la venta', 'warning');
+      return;
+    }
+    const total = this.totalConRedondeo;
+    if ((this.totalPagos + 0.009) < total) {
+      this.toast.show('El total de pagos no coincide con el total de la venta', 'warning');
+      return;
+    }
+
+    const venta: Venta = {
+      numeroTicket: 'T-' + Date.now(),
+      fecha: new Date(),
+      productos: this.carrito.map(vp => ({ ...vp })),
+      total: total,
+      redondeo: this.redondeoCarrito,
+      descuentoPct: this.descuentoPct || 0,
+      descuentoMonto: this.descuentoMonto || 0,
+      metodoPago: this.pagos.map(p => p.metodo).join(' + '),
+      pagos: this.pagos.map(p => ({ ...p })),
+      cliente: this.cliente || undefined,
+      vendedor: this.vendedor,
+      vuelto: this.vuelto,
+    };
+
+    const ok = this.db.crearVenta(venta);
+    if (!ok) {
+      this.toast.show('Stock insuficiente para alguno de los productos', 'warning');
+      return;
+    }
+    this.toast.show('Venta registrada', 'success');
+    this.mostrarResumenVenta = false;
+    this.carrito = [];
+    this.pagos = [{ metodo: 'Efectivo', monto: 0 }];
+    this.descuentoPct = 0;
+    this.descuentoMonto = 0;
+    this.filtro = '';
+  }
+
+  get ultimas24h(): Venta[] {
+    return this.db.getVentasUltimas24h();
+  }
+
+  get resumenPeriodo(): { metodo: string; total: number }[] {
+    if (this.fechaSeleccionada) {
+      const parsed = this.parseFechaSeleccionada(this.fechaSeleccionada);
+      if (parsed) {
+        const mapa = this.db.getSumaPagosPorMetodo(parsed.inicio, parsed.fin);
+        return Object.entries(mapa)
+          .map(([metodo, total]) => ({ metodo, total }))
+          .filter(x => x.total > 0);
+      }
+    }
+    const ahora = new Date();
+    const inicio = new Date(ahora.getTime() - 24 * 60 * 60 * 1000);
+    const mapa = this.db.getSumaPagosPorMetodo(inicio, ahora);
+    return Object.entries(mapa)
+      .map(([metodo, total]) => ({ metodo, total }))
+      .filter(x => x.total > 0);
+  }
+
+  get ventasDelDia(): Venta[] {
+    const ventas = this.db.getVentasActuales();
+    if (!this.fechaSeleccionada) {
+      return this.ultimas24h;
+    }
+    const parsed = this.parseFechaSeleccionada(this.fechaSeleccionada);
+    if (!parsed) return this.ultimas24h;
+    const { inicio, fin } = parsed;
+    return ventas
+      .filter(v => v.fecha >= inicio && v.fecha <= fin)
+      .sort((a, b) => b.fecha.getTime() - a.fecha.getTime());
+  }
+
+  getTotalVentaMostrar(v: Venta): number {
+    const totalGuardado = Math.max(0, Math.round(Number(v.total || 0)));
+    const tienePropRedondeo = Object.prototype.hasOwnProperty.call(v as any, 'redondeo');
+    if (tienePropRedondeo) {
+      return totalGuardado;
+    }
+    const productos = (v.productos || []);
+    const subtotal = productos.reduce((acc, p: any) => acc + Math.round(Number(p.subtotal || (Number(p.cantidad || 0) * Number(p.precioUnitario || 0)))), 0);
+    let descuento = 0;
+    if (v.descuentoPct && v.descuentoPct > 0) {
+      descuento = Math.round((subtotal * Number(v.descuentoPct)) / 100);
+    } else if (v.descuentoMonto && v.descuentoMonto > 0) {
+      descuento = Math.round(Number(v.descuentoMonto));
+    }
+    const base = Math.max(0, subtotal - descuento);
+    const resto = base % 100;
+    const faltante = resto === 0 ? 0 : (100 - resto);
+    const redondeoCalc = faltante > 0 && faltante <= 40 ? faltante : 0;
+    if (Math.abs(totalGuardado - base) <= 1) {
+      return base + redondeoCalc;
+    }
+    return totalGuardado;
+  }
+
+  get cantidadPagosElectronicosDia(): number {
+    const ventas = this.ventasDelDia;
+    const metodosValidos = new Set(['Transferencia', 'Débito', 'Crédito']);
+    let count = 0;
+    for (const v of ventas) {
+      for (const p of (v.pagos || [])) {
+        if (metodosValidos.has((p.metodo || '').trim())) {
+          count++;
+        }
+      }
+    }
+    return count;
+  }
+
+  async exportarVentasDia(): Promise<void> {
+    if (!this.fechaSeleccionada) {
+      this.toast.show('Seleccioná un día para exportar.', 'warning');
+      return;
+    }
+    const parsed = this.parseFechaSeleccionada(this.fechaSeleccionada);
+    if (!parsed) {
+      this.toast.show('Fecha inválida.', 'error');
+      return;
+    }
+    const { inicio, fin } = parsed;
+    const ventas = this.db.getVentasPorFecha(inicio, fin);
+    const metodosValidos = new Map<string, string>([
+      ['Transferencia', 'transferencia'],
+      ['Débito', 'debito'],
+      ['Crédito', 'credito'],
+    ]);
+
+    const two = (n: number) => String(n).padStart(2, '0');
+    const filas = [] as Array<{ 'FECHA': string; 'HORA': string; 'MONTO': number; 'METODO DE PAGO': string }>;
+    for (const v of ventas) {
+      for (const p of (v.pagos || [])) {
+        const etiqueta = metodosValidos.get((p.metodo || '').trim());
+        if (!etiqueta) continue;
+        const d = v.fecha;
+        const fechaStr = `${two(d.getDate())}/${two(d.getMonth() + 1)}/${d.getFullYear()}`;
+        const horaStr = `${two(d.getHours())}:${two(d.getMinutes())}`;
+        filas.push({
+          'FECHA': fechaStr,
+          'HORA': horaStr,
+          'MONTO': Number(p.monto || 0),
+          'METODO DE PAGO': etiqueta,
+        });
+      }
+    }
+
+    if (!filas.length) {
+      this.toast.show('No hay pagos por transferencia/débito/crédito para ese día.', 'info');
+      return;
+    }
+
+    try {
+      const { utils, write } = await import('xlsx');
+      const ws = utils.json_to_sheet(filas);
+      const wb = utils.book_new();
+      utils.book_append_sheet(wb, ws, 'Ventas');
+
+      const y = inicio.getFullYear();
+      const m = String(inicio.getMonth() + 1).padStart(2, '0');
+      const d = String(inicio.getDate()).padStart(2, '0');
+      const fileName = `Reporte_Ventas_${y}-${m}-${d}.xlsx`;
+
+      const wbout = write(wb, { bookType: 'xlsx', type: 'array' });
+      const electronAPI = (window as any)?.electronAPI;
+      if (electronAPI?.saveFile) {
+        const result = await electronAPI.saveFile(wbout, {
+          defaultPath: fileName,
+          filters: [{ name: 'Excel', extensions: ['xlsx'] }]
+        });
+        if (result?.ok) {
+          this.toast.show('Reporte exportado a Excel.');
+        } else if (result?.canceled) {
+          this.toast.show('Guardado cancelado.', 'info');
+        } else {
+          this.toast.show('No se pudo guardar el archivo.', 'error');
+        }
+      } else {
+        const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+        const { saveAs } = await import('file-saver');
+        saveAs(blob, fileName);
+        this.toast.show('Reporte exportado a Excel.');
+      }
+    } catch (e) {
+      this.toast.show('Error al exportar el reporte.', 'error');
+    }
+  }
+
+  onFechaChange(valor: string): void {
+    const limpio = (valor || '')
+      .replace(/-/g, '/')
+      .replace(/[^0-9/]/g, '')
+      .slice(0, 10);
+    this.fechaSeleccionada = limpio;
+  }
+
+  private parseFechaSeleccionada(valor: string): { inicio: Date; fin: Date } | null {
+    const sep = valor.includes('/') ? '/' : valor.includes('-') ? '-' : '';
+    if (!sep) return null;
+    const partes = valor.split(sep);
+    if (partes.length !== 3) return null;
+    const dia = Number(partes[0]);
+    const mes = Number(partes[1]);
+    const anio = Number(partes[2]);
+    if (!dia || !mes || !anio) return null;
+    const inicio = new Date(anio, mes - 1, dia, 0, 0, 0, 0);
+    const fin = new Date(anio, mes - 1, dia, 23, 59, 59, 999);
+    return { inicio, fin };
+  }
+
+  solicitarEliminarVenta(v: Venta): void {
+    this.ventaAEliminar = v;
+    this.restockConfirm = true;
+  }
+
+  confirmarEliminarVenta(): void {
+    const v = this.ventaAEliminar;
+    if (!v || !v.id) {
+      this.ventaAEliminar = null;
+      return;
+    }
+    this.db.eliminarVenta(v.id, this.restockConfirm);
+    this.toast.show('Venta eliminada', 'info');
+    this.ventaAEliminar = null;
+  }
+
+  cancelarEliminarVenta(): void {
+    this.ventaAEliminar = null;
+  }
+
+  aplicarDescuento(): void {
+    const valor = Number(this.descuentoPct || 0);
+    if (isNaN(valor)) {
+      this.descuentoPct = 0;
+      return;
+    }
+    this.descuentoPct = Math.min(100, Math.max(0, Math.round(valor)));
+  }
+
+  setDescuento(pct: number): void {
+    this.descuentoPct = Math.min(100, Math.max(0, pct));
+  }
+
+  agregarVendedor(): void {
+    const n = (this.nuevoVendedorNombre || '').trim();
+    if (!n) return;
+    const ok = this.db.agregarVendedor(n);
+    if (ok) {
+      this.toast.show('Vendedor agregado', 'success');
+      this.nuevoVendedorNombre = '';
+    } else {
+      this.toast.show('El vendedor ya existe o es inválido', 'warning');
+    }
+  }
+
+  eliminarVendedor(nombre: string): void {
+    const ok = this.db.eliminarVendedor(nombre);
+    if (ok) {
+      this.toast.show('Vendedor eliminado', 'info');
+      if (this.vendedor === nombre) {
+        this.vendedor = this.vendedores[0] || 'Vendedor 1';
+      }
+    } else {
+      this.toast.show('No se pudo eliminar', 'warning');
+    }
+  }
+
+  
+
+  async imprimirTicketVenta(v: Venta): Promise<void> {
+    try {
+      const api = (window as any)?.electronAPI;
+      if (!api?.escposPrint) { this.toast.show('Impresora térmica no disponible en escritorio', 'warning'); return; }
+      const venta = { ...v } as Venta & { redondeo?: number };
+      if (!(venta as any).redondeo || Number(venta.redondeo) <= 0) {
+        const productos = (venta.productos || []);
+        const subtotal = productos.reduce((acc, p: any) => acc + Math.round(Number(p.subtotal || (Number(p.cantidad || 0) * Number(p.precioUnitario || 0)))), 0);
+        let descuento = 0;
+        if (venta.descuentoPct && venta.descuentoPct > 0) {
+          descuento = Math.round((subtotal * Number(venta.descuentoPct)) / 100);
+        } else if (venta.descuentoMonto && venta.descuentoMonto > 0) {
+          descuento = Math.round(Number(venta.descuentoMonto));
+        }
+        const base = Math.max(0, subtotal - descuento);
+        const resto = base % 100;
+        const faltante = resto === 0 ? 0 : (100 - resto);
+        venta.redondeo = faltante > 0 && faltante <= 40 ? faltante : 0;
+        const totalCalc = Math.max(0, Math.round(base + (venta.redondeo || 0)));
+        if (Math.abs(Number(venta.total || 0) - totalCalc) > 1) {
+          venta.total = totalCalc;
+        }
+      }
+      const fecha = venta.fecha instanceof Date ? venta.fecha : new Date(venta.fecha);
+      const two = (n:number)=>String(n).padStart(2,'0');
+      const fechaStr = `${two(fecha.getDate())}/${two(fecha.getMonth()+1)}/${fecha.getFullYear()} ${two(fecha.getHours())}:${two(fecha.getMinutes())}`;
+      const payload = {
+        negocio: { nombre: 'Ferretería "El Tano"', dir1: 'Batalla de Ituzaingó 2739', dir2: '1888, Fcio. Varela' },
+        fecha: fechaStr,
+        numero: venta.numeroTicket,
+        vendedor: venta.vendedor,
+        items: (venta.productos||[]).map((p:any)=>({ cantidad: p.cantidad, detalle: p.nombre, precio: p.precioUnitario, subtotal: p.subtotal })),
+        total: venta.total,
+        redondeo: Number((venta as any).redondeo || 0),
+        descuentoPct: Number(venta.descuentoPct || 0),
+        descuentoMonto: Number(venta.descuentoMonto || 0),
+        aplicarRedondeo: Number((venta as any).redondeo || 0) > 0
+      };
+      this.toast.show('Enviando a impresora térmica...', 'info');
+      const res = await api.escposPrint(payload);
+      if (res?.ok) this.toast.show('Ticket impreso'); else this.toast.show(`No se pudo imprimir: ${res?.error || 'desconocido'}`, 'error');
+    } catch (e:any) {
+      this.toast.show('Error de impresión', 'error');
+    }
+  }
+
+  
+}

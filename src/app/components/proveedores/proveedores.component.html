@@ -1,0 +1,230 @@
+<div class="proveedores-container">
+  <h1>Gestión de Proveedores</h1>
+
+  <div class="acciones">
+    <button class="btn lg pill" (click)="toggleForm()">
+      <app-icon name="plus"></app-icon>
+      Agregar Proveedor
+    </button>
+  </div>
+
+  <div class="modal-backdrop" *ngIf="mostrarForm">
+    <div class="modal">
+      <div class="modal-head">
+        <div class="title">Agregar proveedor</div>
+        <button class="btn icon" title="Cerrar" (click)="toggleForm()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="row">
+          <label>Nombre</label>
+          <input type="text" [(ngModel)]="nuevo.nombre" placeholder="Nombre del proveedor" />
+        </div>
+        <div class="row">
+          <label>Ubicación</label>
+          <input type="text" [(ngModel)]="nuevo.ubicacion" placeholder="Ciudad, zona, etc." />
+        </div>
+        <div class="row">
+          <label>Descripción</label>
+          <textarea [(ngModel)]="nuevo.descripcion" rows="2" placeholder="Qué ofrece, marcas, etc."></textarea>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" (click)="toggleForm()">Cancelar</button>
+        <button class="btn primary" (click)="agregarProveedor()">Guardar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="toolbar">
+    <div class="search">
+      <span class="icon"><app-icon name="search" [size]="18" color="#7f8c8d"></app-icon></span>
+      <input type="text" [(ngModel)]="filtro" placeholder="Buscar por nombre, zona o descripción" />
+      <button class="btn tiny secondary" (click)="filtro = ''">Limpiar</button>
+    </div>
+  </div>
+
+  <div class="lista scrollable">
+    <div class="card proveedor" *ngFor="let p of proveedoresFiltrados" [class.selected]="p.id === proveedorSeleccionadoId">
+      <div class="head">
+        <div>
+          <div class="nombre">
+            {{ p.nombre }}
+            <button class="btn tiny secondary lapiz" title="Editar" (click)="iniciarEdicion(p)"><app-icon name="edit" [size]="16"></app-icon></button>
+            <button class="btn tiny danger lapiz" title="Eliminar" (click)="eliminarProveedor(p.id)"><app-icon name="trash" [size]="16" color="#c0392b"></app-icon></button>
+          </div>
+          <div class="desc">{{ p.ubicacion }} · {{ p.descripcion }}</div>
+        </div>
+        <div class="acciones">
+          <button class="btn lg success" (click)="abrirModalCarga(p.id)">Subir Excel</button>
+          <button class="btn lg primary pedido cta" (click)="seleccionarProveedor(p.id)">Pedido</button>
+          <button class="btn lg danger" (click)="solicitarReemplazarListas(p.id)">Reemplazar listas</button>
+        </div>
+      </div>
+      <div class="meta">Listas cargadas: {{ (p.listas || []).length }}</div>
+
+      <div class="edit-inline" *ngIf="editandoId === p.id">
+        <div class="row">
+          <label>Nombre</label>
+          <input type="text" [(ngModel)]="edit.nombre" />
+        </div>
+        <div class="row">
+          <label>Ubicación</label>
+          <input type="text" [(ngModel)]="edit.ubicacion" />
+        </div>
+        <div class="row">
+          <label>Descripción</label>
+          <input type="text" [(ngModel)]="edit.descripcion" />
+        </div>
+        <div class="acciones">
+          <button class="btn" (click)="cancelarEdicion()">Cancelar</button>
+          <button class="btn primary" (click)="guardarEdicion(p.id)">Guardar</button>
+        </div>
+      </div>
+
+      <div class="pedido" *ngIf="proveedorSeleccionadoId === p.id">
+        <div class="card">
+          <div class="row between">
+            <div class="titulo">Armar Pedido</div>
+            <button class="btn danger icon" title="Cerrar" (click)="cerrarPanel()">×</button>
+            <div class="filtro">
+              <app-icon name="grid"></app-icon>
+              <input type="text" [(ngModel)]="filtro" placeholder="Buscar por código o nombre" />
+              <button class="btn tiny secondary" (click)="filtro = ''">Limpiar</button>
+            </div>
+          </div>
+          <div class="contenido">
+            <div class="items">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Código</th>
+                    <th>Nombre</th>
+                    <th class="right">Precio</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr *ngFor="let it of itemsFiltrados | slice:0:200">
+                    <td>{{ it.codigo }}</td>
+                    <td>{{ it.nombre }}</td>
+                    <td class="right" [class.sintilde]="!tienePrecio(it)">
+                      <ng-container *ngIf="tienePrecio(it); else noPrecio">
+                        {{ it.precio | number:'1.2-2' }}
+                      </ng-container>
+                      <ng-template #noPrecio>—</ng-template>
+                    </td>
+                    <td class="right">
+                      <button class="btn tiny" [disabled]="!tienePrecio(it)" (click)="agregarAlPedido(it)">Agregar</button>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div class="resumen">
+              <div class="titulo">Pedido actual</div>
+              <div class="scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Código</th>
+                      <th>Nombre</th>
+                      <th class="right">Precio</th>
+                      <th class="right">Cant.</th>
+                      <th class="right">Subt.</th>
+                      <th></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr *ngFor="let it of pedido">
+                      <td>{{ it.codigo }}</td>
+                      <td>{{ it.nombre }}</td>
+                      <td class="right">{{ it.precio | number:'1.2-2' }}</td>
+                      <td class="right"><input type="number" [(ngModel)]="it.cantidad" min="1" /></td>
+                      <td class="right">{{ (it.precio * it.cantidad) | number:'1.2-2' }}</td>
+                      <td class="right"><button class="btn tiny danger" (click)="quitarDelPedido(it.codigo)">Quitar</button></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div class="total">
+                Total: <b>${{ totalPedido() | number:'1.2-2' }}</b>
+              </div>
+              <button class="btn primary block export" [disabled]="!pedido.length" (click)="exportarPedido()">EXPORTAR A EXCEL</button>
+              <div class="historial">
+                <div class="titulo">Historial de pedidos</div>
+                <div class="scroll">
+                  <table>
+                    <thead>
+                      <tr>
+                        <th>Fecha</th>
+                        <th class="right">Total</th>
+                        <th class="center">Entregado</th>
+                        <th class="center">Pagado</th>
+                        <th class="center">Acciones</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      <tr *ngFor="let p of pedidosHistorial">
+                        <td>{{ p.fecha | date:'short' }}</td>
+                        <td class="right">${{ p.total | number:'1.2-2' }}</td>
+                        <td class="center">
+                          <input type="checkbox" [checked]="p.entregado" (change)="toggleEntregado(p)" />
+                        </td>
+                        <td class="center">
+                          <input type="checkbox" [checked]="p.pagado" (change)="togglePagado(p)" />
+                        </td>
+                        <td class="center">
+                          <button class="btn tiny danger" title="Eliminar" [disabled]="!(p.pagado && p.entregado)" (click)="eliminarPedido(p.id)">×</button>
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" *ngIf="proveedorAReemplazarId">
+    <div class="modal">
+      <div class="modal-head">
+        <div class="title">Reemplazar listas</div>
+        <button class="btn icon danger" (click)="cancelarReemplazarListas()">×</button>
+      </div>
+      <div class="modal-body">
+        Esto borrará todas las listas de precios cargadas para este proveedor. ¿Estás seguro?
+      </div>
+      <div class="modal-actions">
+        <button class="btn" (click)="cancelarReemplazarListas()">Cancelar</button>
+        <button class="btn danger" (click)="confirmarReemplazarListas()">Sí, borrar</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" *ngIf="modalCargaProveedorId">
+    <div class="modal">
+      <div class="modal-head">
+        <div class="title">Cargar lista de precios</div>
+        <button class="btn icon danger" (click)="cancelarModalCarga()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="row">
+          <label>Descuento %</label>
+          <input type="number" step="0.01" min="-100" [(ngModel)]="modalDescuentoPct" />
+          <div class="hint">Se aplica a los precios importados y queda recordado para este proveedor.</div>
+        </div>
+        <div class="row">
+          <label>Archivo Excel</label>
+          <input type="file" accept=".xlsx,.xls" (change)="onArchivoSeleccionado($event)" />
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn" (click)="cancelarModalCarga()">Cancelar</button>
+        <button class="btn primary" [disabled]="!modalArchivo" (click)="confirmarCargaExcel()">Cargar</button>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,89 @@
+:host { display: block; height: 100vh; overflow: hidden; }
+.estadisticas-container {
+  padding: 0 10px 0;
+  text-align: center;
+  overflow: hidden;
+  margin-top: 0 !important;
+  height: 100%;
+}
+
+h1 {
+  color: #ffffff;
+  margin-bottom: 4px;
+  margin-top: 0;
+}
+
+.estadisticas-container > h1 {
+  margin-top: 0 !important;
+  margin-bottom: 4px;
+}
+
+.periodo-card { background: #fff; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.06); padding: 6px; max-width: 520px; margin: 0 auto 6px; text-align: center; }
+.periodo-card .titulo { color: #2c3e50; font-weight: 700; margin-bottom: 6px; text-align: center; }
+.periodo-card .controles { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; justify-content: center; }
+.periodo-card .control { display: flex; align-items: center; gap: 6px; background: #f7f9fb; border: 1px solid #ecf0f1; padding: 6px 8px; border-radius: 10px; }
+.periodo-card .lbl { color: #2c3e50; font-weight: 600; }
+.periodo-card select { padding: 6px 8px; border: 1px solid #dfe6e9; border-radius: 8px; background: #fff; }
+.btn-recalcular { display:none; }
+
+.grid-cards { display: grid; grid-template-columns: repeat(12, 1fr); gap: 6px; align-items: start; align-content: start; grid-template-rows: 230px 360px; grid-auto-rows: 230px; height: calc(100vh - 200px); overflow: hidden; }
+.grid-cards > .card:nth-child(n+5) { height: 360px; }
+.w-3 { grid-column: span 3; }
+.w-4 { grid-column: span 4; }
+.w-6 { grid-column: span 6; }
+.w-5 { grid-column: span 5; }
+.w-2 { grid-column: span 2; }
+
+.no-data .card.full { max-width: 800px; margin: 0 auto; }
+
+.card { padding: 8px; }
+.bars { height: 130px; }
+.bar-col { height: 100px; }
+.pie { width: 300px; height: 300px; }
+
+.card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 8px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.06);
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  height: 230px;
+}
+
+.card-title { color: #2c3e50; font-weight: 700; margin-bottom: 4px; font-size: 1.02rem; }
+.card-value { color: #2c3e50; font-size: 2rem; font-weight: 800; line-height: 1.1; }
+.card-sub { color: #7f8c8d; margin-top: 2px; font-size: 0.88rem; }
+
+.span-2 { grid-column: span 2; }
+
+.bars { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; align-items: end; height: 130px; margin-top: 6px; }
+.bar { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.bar-col { width: 20px; height: 100px; background: #f0f3f5; border-radius: 6px; overflow: hidden; display: flex; align-items: flex-end; }
+.bar-fill { width: 100%; background: linear-gradient(180deg,#2c3e50,#0e1f3a); border-radius: 6px 6px 0 0; }
+.bar-label { color: #2c3e50; font-weight: 600; }
+.bar-total { color: #7f8c8d; font-size: 0.85rem; transform: translateY(-6px); }
+
+.picos { display: grid; gap: 6px; flex: 1; overflow: hidden; max-height: 130px; }
+.pico { background: #f7f9fb; border: 1px solid #ecf0f1; border-radius: 8px; padding: 4px 8px; min-height: 40px; display: flex; align-items: center; }
+
+.pie { width: 280px; height: 280px; border-radius: 50%; margin: 6px auto 6px; box-shadow: inset 0 0 0 10px #fff; }
+.echart { width: 100%; height: 200px; }
+.pie-echart { height: 260px; }
+.leyenda { display: grid; gap: 6px; }
+.leyenda .item { display: grid; grid-template-columns: 14px 1fr auto; align-items: center; gap: 8px; }
+.leyenda .item .c { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
+
+.top5 { display: grid; gap: 6px; flex: 1; overflow: auto; max-height: 220px; padding-right: 4px; }
+.top5 .row { display: flex; justify-content: space-between; border: 1px solid #ecf0f1; border-radius: 8px; padding: 4px 8px; }
+.top5 .n { color: #2c3e50; }
+.top5 .v { font-weight: 700; }
+
+.metodos { display: grid; gap: 6px; margin-top: 4px; flex: 1; overflow: auto; max-height: 220px; padding-right: 4px; }
+.metodos .metodo { display: flex; justify-content: space-between; border: 1px solid #ecf0f1; border-radius: 8px; padding: 4px 8px; }
+
+:host ::ng-deep .main-content {
+  padding: 0 !important;
+  overflow: hidden !important;
+}

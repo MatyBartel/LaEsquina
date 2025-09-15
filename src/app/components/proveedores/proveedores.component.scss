@@ -1,0 +1,83 @@
+.proveedores-container { padding: 10px; }
+h1 { color: #ffffff; margin: 0 0 8px; text-align: center; }
+.acciones { display: flex; justify-content: center; gap: 8px; margin-bottom: 8px; }
+
+.btn { background: #ffffff; color: #0b2a50; border: 1px solid #e6ecf2; padding: 8px 12px; border-radius: 10px; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: transform .04s ease, box-shadow .12s ease; }
+.btn:hover { box-shadow: 0 8px 16px rgba(0,0,0,0.06); transform: translateY(-1px); }
+.btn.lg { padding: 12px 16px; font-size: 0.95rem; border-radius: 12px; }
+.btn.pill { border-radius: 999px; }
+.btn.primary { background: #0b2a50; color: #fff; }
+.btn.primary.pedido { background: #1b4a8f; border-color: #1b4a8f; color: #fff; }
+.btn.secondary { background: #f3f6fa; color: #0b2a50; }
+.btn.success { background: #0e7a3e; color: #fff; border-color: #0e6c38; }
+.btn.danger { background: #ffe8e8; color: #c0392b; border-color: #f4c7c7; }
+.btn.danger.lg { background: #e74c3c; color: #ffffff; border-color: #e74c3c; }
+.btn.tiny { padding: 4px 8px; border-radius: 8px; }
+.btn.block { width: 100%; justify-content: center; }
+.btn.export { font-weight: 900; letter-spacing: 0.5px; font-size: 1.05rem; }
+.btn[disabled] { background: #e9edf2; color: #8aa0b2; border-color: #e1e7ef; cursor: not-allowed; }
+.btn.primary[disabled] { background: #cfd6df; color: #8aa0b2; border-color: #cfd6df; }
+
+.card { background: #fff; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.06); padding: 10px; }
+.form .row { display: grid; gap: 6px; margin-bottom: 8px; }
+.form input, .form textarea { border: 1px solid #e6ecf2; border-radius: 8px; padding: 8px 10px; }
+
+.toolbar { display: flex; justify-content: center; margin-bottom: 8px; }
+.toolbar .search { position: relative; display: flex; align-items: center; background: #fff; border: 1px solid #e6ecf2; border-radius: 10px; padding: 6px 10px; gap: 8px; }
+.toolbar .search input { border: none; outline: none; min-width: 320px; }
+.toolbar .search .btn { padding: 6px 8px; }
+
+.lista { display: grid; gap: 8px; height: calc(100vh - 220px); overflow-y: auto; overflow-x: hidden; padding-right: 6px; padding-bottom: 12px; align-content: start; align-items: start; }
+/* Sólo si el último proveedor tiene abierto el panel de pedido, agregamos espacio extra abajo */
+.lista > .proveedor:last-child:has(.pedido) { margin-bottom: 140px; }
+.proveedor { display: grid; gap: 6px; }
+.proveedor.selected { outline: 2px solid #0b2a50; }
+.proveedor .head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+.proveedor .nombre { font-weight: 800; font-size: 1.1rem; color: #2c3e50; }
+.proveedor .nombre .lapiz { margin-left: 6px; padding: 2px 6px; }
+.proveedor .desc { color: #7f8c8d; }
+.proveedor .meta { color: #7f8c8d; font-size: 0.9rem; }
+
+.edit-inline { margin-top: 8px; padding-top: 8px; border-top: 1px solid #eef2f7; display: grid; gap: 8px; }
+.edit-inline .row { display: grid; gap: 4px; }
+.edit-inline input { border: 1px solid #e6ecf2; border-radius: 8px; padding: 8px 10px; }
+.proveedor .acciones { display: inline-flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.proveedor .acciones .cta { transform: translateY(0); }
+.proveedor .acciones .cta:hover { transform: translateY(-1px); }
+
+/* Centrado vertical del card proveedor: nombre/desc a la izquierda y botones centrados verticalmente */
+.proveedor .head > div:first-child { display: flex; flex-direction: column; justify-content: center; }
+.proveedor .acciones .btn { min-height: 38px; }
+
+/* Modal campos */
+.modal .row { display: grid; gap: 6px; margin-bottom: 8px; }
+.modal input[type="number"], .modal input[type="file"] { border: 1px solid #e6ecf2; border-radius: 8px; padding: 8px 10px; }
+.modal .hint { font-size: 0.85rem; color: #7f8c8d; }
+
+.pedido .card { margin-top: 8px; }
+.pedido .titulo { font-weight: 800; color: #2c3e50; }
+.pedido .contenido { display: grid; grid-template-columns: 7fr 5fr; gap: 8px; }
+.pedido .items { max-height: 380px; overflow: auto; border: 1px solid #eef2f7; border-radius: 10px; }
+.pedido .resumen { display: grid; gap: 8px; }
+.pedido .scroll { max-height: 300px; overflow: auto; border: 1px solid #eef2f7; border-radius: 10px; }
+.pedido table { width: 100%; border-collapse: collapse; }
+.pedido th, .pedido td { padding: 8px; border-bottom: 1px solid #f0f3f7; color: #2c3e50; }
+.pedido th.right, .pedido td.right { text-align: right; }
+.pedido th.center, .pedido td.center { text-align: center; }
+.pedido td.sintilde { color: #a6b2bd; font-style: italic; }
+.pedido input[type="number"] { width: 70px; border: 1px solid #e6ecf2; border-radius: 8px; padding: 4px 6px; }
+.pedido .total { text-align: right; font-weight: 800; color: #2c3e50; }
+.historial .titulo { font-weight: 700; color: #2c3e50; margin-top: 6px; }
+.btn.icon { width: 36px; height: 36px; display: inline-flex; align-items: center; justify-content: center; padding: 0; font-size: 20px; }
+
+.modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; z-index: 50; }
+.modal { background: #fff; width: 380px; max-width: 90vw; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); }
+.modal-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 1px solid #eef2f7; }
+.modal-head .title { font-weight: 800; color: #2c3e50; }
+.modal-body { padding: 12px; color: #2c3e50; }
+.modal-actions { display: flex; justify-content: flex-end; gap: 8px; padding: 10px 12px; border-top: 1px solid #eef2f7; }
+
+.pedido .row.between { align-items: center; }
+.pedido .filtro { display: inline-flex; align-items: center; gap: 8px; background: #f7f9fc; border: 1px solid #e6ecf2; padding: 6px 10px; border-radius: 10px; }
+.pedido .filtro input { border: none; background: transparent; outline: none; min-width: 280px; color: #2c3e50; }
+.pedido .filtro input::placeholder { color: #8aa0b2; }

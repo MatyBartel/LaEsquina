@@ -1,0 +1,289 @@
+<div class="ventas-container">
+  <h1>Gestión de Ventas</h1>
+  <div class="layout">
+    <section class="catalogo">
+      <div class="busqueda">
+        <div class="search">
+          <span class="icon"><app-icon name="search" [size]="18" color="#7f8c8d"></app-icon></span>
+          <input type="text" placeholder="Buscar por nombre o código" [(ngModel)]="filtro" />
+          <button class="clear" *ngIf="filtro" (click)="filtro=''">×</button>
+        </div>
+      </div>
+      <ul class="lista">
+        <li *ngFor="let p of productosFiltrados">
+          <div class="info">
+            <div class="nombre">{{ p.nombre }}</div>
+            <div class="meta meta-principal">{{ p.codigo }} • ${{ p.precio | number:'1.0-0' }} • Stock: {{ p.stock }}</div>
+            <div class="meta desc" *ngIf="p.descripcion">{{ p.descripcion }}</div>
+          </div>
+          <button class="add" (click)="agregarAlCarrito(p)"><app-icon name="plus" [size]="18" color="#ffffff"></app-icon></button>
+        </li>
+      </ul>
+    </section>
+
+    <section class="carrito">
+      <h2>Carrito</h2>
+      <div class="tabla-wrapper">
+      <table>
+        <thead>
+          <tr>
+            <th>Producto</th>
+            <th>Cant.</th>
+            <th>Precio</th>
+            <th>Subtotal</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr *ngFor="let vp of carrito">
+            <td>{{ vp.nombre }}</td>
+            <td><input type="text" inputmode="decimal" pattern="[0-9.,]*" [(ngModel)]="vp.editCantidad" (ngModelChange)="onCantidadChange(vp, $event)" (blur)="onCantidadBlur(vp)" /></td>
+            <td>${{ vp.precioUnitario | number:'1.0-0' }}</td>
+            <td>${{ vp.subtotal | number:'1.0-0' }}</td>
+            <td><button class="danger" (click)="quitarDelCarrito(vp)">Quitar</button></td>
+          </tr>
+          <tr *ngIf="!carrito.length">
+            <td colspan="5" class="muted">No hay productos en el carrito</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+      <div class="vendedor-box">
+        <label>Vendedor:</label>
+        <select [(ngModel)]="vendedor">
+          <option *ngFor="let v of vendedores" [ngValue]="v">{{ v }}</option>
+        </select>
+        <button class="ghost" (click)="mostrarNuevoVendedor = !mostrarNuevoVendedor">+ Nuevo</button>
+        <button class="ghost danger" (click)="eliminarVendedor(vendedor)" [disabled]="!vendedores.length">Eliminar</button>
+      </div>
+      <div class="vendedor-box" *ngIf="mostrarNuevoVendedor">
+        <input type="text" [(ngModel)]="nuevoVendedorNombre" placeholder="Nombre de vendedor" />
+        <button class="ghost" (click)="agregarVendedor()">Agregar</button>
+        <button class="ghost" (click)="mostrarNuevoVendedor=false">Cancelar</button>
+      </div>
+      <div class="descuento-box">
+        <label>Descuento (%):</label>
+        <input type="number" min="0" max="100" step="1" [(ngModel)]="descuentoPct" />
+        <div class="chips">
+          <button class="chip" (click)="setDescuento(10)">10%</button>
+          <button class="chip" (click)="setDescuento(15)">15%</button>
+          <button class="chip" (click)="setDescuento(20)">20%</button>
+        </div>
+        <span class="detalle" *ngIf="descuentoMonto">- ${{ descuentoMonto | number:'1.0-0' }}</span>
+      </div>
+      <div class="descuento-box" style="justify-content:flex-end">
+        <label>
+          <input type="checkbox" [(ngModel)]="aplicarRedondeo" /> Aplicar redondeo al total
+        </label>
+      </div>
+      <div class="total" *ngIf="redondeoCarrito > 0">Redondeo: ${{ redondeoCarrito | number:'1.0-0' }}</div>
+      <div class="total">Total: ${{ totalConRedondeo | number:'1.0-0' }}</div>
+      <div class="total vuelto" *ngIf="vuelto > 0">Vuelto: ${{ vuelto | number:'1.0-0' }}</div>
+
+      <div class="pagos">
+        <h3>Pagos</h3>
+        <div class="pago-cards">
+          <div class="pago-card" *ngFor="let p of pagos">
+            <div class="fila fila-compacta">
+              <div class="select">
+                <select [(ngModel)]="p.metodo" (change)="onMetodoPagoChange(p)">
+                  <option>Efectivo</option>
+                  <option>Débito</option>
+                  <option>Crédito</option>
+                  <option>Transferencia</option>
+                  <option>Otro</option>
+                </select>
+              </div>
+              <div class="monto" style="display:flex;align-items:center;gap:6px;max-width:180px;">
+                <span>$</span>
+                <input type="text" inputmode="numeric" [(ngModel)]="p.montoStr" (input)="onPagoInput(p, $event)" (blur)="onPagoBlur(p)" placeholder="Monto" style="width:100%" />
+              </div>
+              <button class="btn-faltante" (click)="rellenarPago(p)">Rellenar</button>
+              <button class="ghost danger" (click)="quitarPago(p)">Eliminar</button>
+            </div>
+            <input type="text" [(ngModel)]="p.referencia" placeholder="Referencia (opcional)" />
+          </div>
+        </div>
+        <div class="acciones-pagos">
+          <button class="secundario" (click)="agregarPago()">+ Agregar pago</button>
+          <div class="resumen-pagos" [class.ok]="estaBalanceado">Pagado: {{ totalPagos | currency:'ARS':'symbol-narrow':'1.0-0':'es-AR' }} · Restante: {{ restante | currency:'ARS':'symbol-narrow':'1.0-0':'es-AR' }} <span class="vuelto" *ngIf="vuelto > 0">· Vuelto: {{ vuelto | currency:'ARS':'symbol-narrow':'1.0-0':'es-AR' }}</span></div>
+        </div>
+        <div class="resumen-metodos">
+          <div class="pago-chip" *ngFor="let r of pagosPorMetodoActual">
+            <span class="label">{{ r.metodo }}</span>
+            <span class="valor">${{ r.total | number:'1.0-0' }}</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="acciones">
+        <button class="primario" (click)="abrirResumenVenta()">Confirmar venta</button>
+      </div>
+    </section>
+
+    <section class="ultimas">
+      <h2>{{ fechaSeleccionada ? ('Ventas del ' + fechaSeleccionada) : 'Últimas 24 horas' }}</h2>
+      <div class="filtros-fecha">
+        <label class="dia-label">Buscar por día:</label>
+        <div class="dia-picker">
+          <button class="cal-btn" title="Abrir calendario" (click)="mostrarCalendario = !mostrarCalendario"><img src="logos/calendario.png" alt="Calendario" width="20" height="20" /></button>
+          <span class="dia-seleccion" *ngIf="fechaSeleccionada">{{ fechaSeleccionada }}</span>
+          <button class="clear" *ngIf="fechaSeleccionada" (click)="onFechaChange('')" title="Limpiar">×</button>
+          <button class="cal-btn" *ngIf="fechaSeleccionada && cantidadPagosElectronicosDia" (click)="exportarVentasDia()" title="Descargar reporte">
+            <app-icon name="download" [size]="18" color="#ffffff"></app-icon>
+          </button>
+        </div>
+        <div class="popover-cal" *ngIf="mostrarCalendario">
+          <input type="date" (change)="onFechaChange($any($event.target).value.split('-').reverse().join('/')); mostrarCalendario=false"/>
+        </div>
+      </div>
+      <div class="resumen-metodos fila">
+        <div class="metodo" *ngFor="let r of resumenPeriodo">
+          <span class="badge">{{ r.metodo | slice:0:1 }}</span>
+          <span class="m">{{ r.metodo }}</span>
+          <span class="t">${{ r.total | number:'1.2-2' }}</span>
+        </div>
+      </div>
+      <div class="ultimas-list">
+      <div class="venta" *ngFor="let v of ventasDelDia">
+        <div class="cab">
+          <span class="num">{{ v.numeroTicket }}</span>
+          <span class="fecha">{{ v.fecha | date:'short' }}</span>
+          <span class="total">Total: ${{ getTotalVentaMostrar(v) | number:'1.0-0' }}</span>
+        </div>
+        <div class="meta-venta">
+          <span>Vendedor: <strong>{{ v.vendedor || '—' }}</strong></span>
+          <span *ngIf="v.cliente">Cliente: <strong>{{ v.cliente }}</strong></span>
+          <span *ngIf="v.descuentoPct">Desc.: {{ v.descuentoPct }}%</span>
+          <span *ngIf="v.descuentoMonto">(-${{ v.descuentoMonto | number:'1.0-0' }})</span>
+          <span *ngIf="v.pagos && v.pagos.length && v.pagos[0].referencia">Ref.: {{ v.pagos[0].referencia }}</span>
+          <span class="vuelto" *ngIf="v.vuelto && v.vuelto > 0">Vuelto: ${{ v.vuelto | number:'1.0-0' }}</span>
+        </div>
+        <div class="prods">
+          <div class="p" *ngFor="let vp of v.productos">{{ vp.nombre }} x{{ vp.cantidad }} (${{ vp.subtotal | number:'1.0-0' }})</div>
+        </div>
+        <div class="pagos-list" *ngIf="v.pagos?.length">
+          <div class="pg" *ngFor="let pg of v.pagos">{{ pg.metodo }}: ${{ pg.monto | number:'1.0-0' }}</div>
+        </div>
+        <div class="acciones-venta">
+          <button type="button" class="danger" (click)="solicitarEliminarVenta(v)">Eliminar</button>
+          <button type="button" class="primario" (click)="imprimirTicketVenta(v)" title="Imprimir ticket">Ticket</button>
+        </div>
+      </div>
+      </div>
+    </section>
+
+    
+    <div class="modal-backdrop" *ngIf="ventaAEliminar" (click)="cancelarEliminarVenta()"></div>
+    <div class="modal" *ngIf="ventaAEliminar">
+      <div class="modal-header">
+        <h3>Eliminar venta</h3>
+        <button class="close" (click)="cancelarEliminarVenta()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="confirm-form">
+          <div class="row">
+            <label>Número:</label>
+            <span>{{ ventaAEliminar!.numeroTicket }}</span>
+          </div>
+          <div class="row">
+            <label>Fecha:</label>
+            <span>{{ ventaAEliminar!.fecha | date:'short' }}</span>
+          </div>
+          <div class="row">
+            <label>Total:</label>
+            <span>${{ ventaAEliminar!.total | number:'1.2-2' }}</span>
+          </div>
+          <div class="row checkbox">
+            <label><input type="checkbox" [(ngModel)]="restockConfirm" /> Restaurar stock de productos</label>
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-light" (click)="cancelarEliminarVenta()">Cancelar</button>
+        <button class="btn-danger" (click)="confirmarEliminarVenta()">Eliminar</button>
+      </div>
+    </div>
+
+    <div class="modal-backdrop" *ngIf="mostrarResumenVenta" (click)="cerrarResumenVenta()"></div>
+    <div class="modal modal-resumen" *ngIf="mostrarResumenVenta">
+      <div class="modal-header">
+        <h3>Resumen de venta</h3>
+        <button class="close" (click)="cerrarResumenVenta()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="resumen">
+          <div class="fila">
+            <span>Fecha</span>
+            <span class="valor">{{ ahora | date:'short' }}</span>
+          </div>
+          <div class="tabla-wrapper">
+            <table class="tabla-resumen">
+              <thead>
+                <tr>
+                  <th>Producto</th>
+                  <th>Cant.</th>
+                  <th>PU</th>
+                  <th>Subtotal</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr *ngFor="let vp of carrito">
+                  <td>{{ vp.nombre }}</td>
+                  <td>{{ vp.cantidad }}</td>
+                  <td>${{ vp.precioUnitario | number:'1.0-0' }}</td>
+                  <td>${{ vp.subtotal | number:'1.0-0' }}</td>
+                </tr>
+              </tbody>
+              <tfoot>
+                <tr *ngIf="descuentoPct">
+                  <td colspan="3" class="right">Descuento ({{ descuentoPct }}%)</td>
+                  <td class="negativo">- ${{ descuentoMonto | number:'1.0-0' }}</td>
+                </tr>
+                <tr *ngIf="redondeoCarrito > 0">
+                  <td colspan="3" class="right">Redondeo</td>
+                  <td>${{ redondeoCarrito | number:'1.0-0' }}</td>
+                </tr>
+                <tr>
+                  <td colspan="3" class="right total-label">Total</td>
+                  <td class="total-valor">${{ totalConRedondeo | number:'1.0-0' }}</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+
+          <div class="pagos-resumen">
+            <div class="titulo">Pagos</div>
+            <div class="lista">
+              <div class="item" *ngFor="let p of pagos">
+                <span class="metodo">{{ p.metodo }}</span>
+                <span class="monto">${{ p.monto | number:'1.0-0' }}</span>
+                <span class="ref" *ngIf="p.referencia">Ref.: {{ p.referencia }}</span>
+              </div>
+            </div>
+            <div class="total-pagos" [class.ok]="estaBalanceado">
+              Pagado: ${{ totalPagos | number:'1.0-0' }} · Restante: ${{ restante | number:'1.0-0' }} <span class="vuelto" *ngIf="vuelto > 0">· Vuelto: ${{ vuelto | number:'1.0-0' }}</span>
+            </div>
+          </div>
+
+          <div class="cliente-vendedor">
+            <div class="campo">
+              <label>Cliente</label>
+              <input type="text" [(ngModel)]="cliente" placeholder="Opcional"/>
+            </div>
+            <div class="campo">
+              <label>Vendedor</label>
+              <select [(ngModel)]="vendedor">
+                <option *ngFor="let v of vendedores" [ngValue]="v">{{ v }}</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-light" (click)="cerrarResumenVenta()">Volver</button>
+        <button class="primario" [disabled]="!estaBalanceado || !carrito.length" (click)="guardarVenta()">Confirmar</button>
+      </div>
+    </div>
+  </div>
+</div>

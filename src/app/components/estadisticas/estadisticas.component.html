@@ -1,0 +1,99 @@
+<div class="estadisticas-container">
+  <h1>Estadísticas</h1>
+
+  <div class="periodo-card">
+    <div class="titulo">Periodo</div>
+    <div class="controles">
+      <div class="control">
+        <span class="lbl">Mes</span>
+        <select [(ngModel)]="mesSeleccionado" (ngModelChange)="onPeriodoChange()">
+          <option *ngFor="let m of meses; index as i" [ngValue]="i">{{ m }}</option>
+        </select>
+      </div>
+      <div class="control">
+        <span class="lbl">Año</span>
+        <select [(ngModel)]="anioSeleccionado" (ngModelChange)="onPeriodoChange()">
+          <option *ngFor="let a of anios" [ngValue]="a">{{ a }}</option>
+        </select>
+      </div>
+      
+    </div>
+  </div>
+
+  
+  <div class="no-data" *ngIf="ventasMes.length === 0">
+    <div class="card full">
+      <div class="card-title">No hay ventas en el período seleccionado</div>
+      <div class="card-sub">Elegí otro mes/año para ver estadísticas.</div>
+    </div>
+  </div>
+
+  
+  <div class="grid-cards" *ngIf="ventasMes.length > 0">
+    <div class="card w-3">
+      <div class="card-title">Ventas del mes</div>
+      <div class="card-value">${{ totalMes | number:'1.2-2' }}</div>
+      <div class="card-sub">Cantidad de ventas: {{ cantidadVentasMes }}</div>
+    </div>
+
+    <div class="card w-3">
+      <div class="card-title">Producto más vendido</div>
+      <div class="card-value">{{ productoMasVendido || '-' }}</div>
+      <div class="card-sub">Unidades: {{ cantidadProductoMasVendido }} · Stock actual: {{ stockProductoMasVendido }}</div>
+    </div>
+
+    <div class="card w-4">
+      <div class="card-title">Cantidad de ventas por día de la semana</div>
+      <div #areaChart class="echart"></div>
+    </div>
+
+    <div class="card w-2">
+      <div class="card-title">Horarios pico</div>
+      <div class="picos">
+        <div class="pico" *ngFor="let h of horasPicoTop">{{ h.hora }} · {{ h.count }} ventas</div>
+      </div>
+    </div>
+
+    <div class="card w-3">
+      <div class="card-title">Método de pago más usado</div>
+      <div #pieChart class="echart pie-echart"></div>
+      <div class="leyenda">
+        <div class="item" *ngFor="let p of pagosUso; index as i">
+          <span class="c" [style.background]="['#2c3e50','#27ae60','#3498db','#8e44ad','#e67e22','#e74c3c'][i % 6]"></span>
+          <span class="m">{{ p.metodo }}</span>
+          <span class="pct">{{ p.percent }}%</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card w-3">
+      <div class="card-title">Métodos de pago</div>
+      <div class="metodos">
+        <div class="metodo" *ngFor="let p of pagosMes">
+          <span class="m">{{ p.metodo }}</span>
+          <span class="t">${{ p.total | number:'1.2-2' }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card w-3">
+      <div class="card-title">Top 5 productos del mes (unidades)</div>
+      <div class="top5">
+        <div class="row" *ngFor="let t of topProductosMes">
+          <span class="n">{{ t.nombre }}</span>
+          <span class="v">{{ t.cantidad }}</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card w-3">
+      <div class="card-title">Ventas por vendedor</div>
+      <div class="metodos">
+        <div class="metodo" *ngFor="let v of ventasPorVendedor">
+          <span class="m">{{ v.vendedor }}</span>
+          <span class="t">{{ v.count }} · ${{ v.total | number:'1.2-2' }}</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

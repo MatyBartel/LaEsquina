@@ -1,0 +1,204 @@
+<div class="stock-container">
+  <div class="page-header grid">
+    <div class="header-left">
+      <div class="search">
+        <span class="icon"><app-icon name="search" [size]="18" color="#7f8c8d"></app-icon></span>
+        <input
+          type="text"
+          placeholder="Buscar por código, nombre o categoría"
+          [(ngModel)]="filtroGeneral"
+        />
+        <button class="clear" *ngIf="filtroGeneral" (click)="filtroGeneral=''">×</button>
+      </div>
+    </div>
+    <div class="header-center">
+      <h1>
+        Gestión de Stock
+      </h1>
+    </div>
+    <div class="header-right">
+      <select [(ngModel)]="categoriaFiltro" class="select-categorias">
+        <option value="">Todas las categorías</option>
+        <option *ngFor="let c of categorias" [value]="c">{{ c }}</option>
+      </select>
+      <button class="btn-mass" (click)="showMassPrice = !showMassPrice">
+        <img src="logos/increase.png" alt="Aumentos" />
+        Aumentos
+      </button>
+      <button class="btn-primary large" (click)="abrirCargaExcel()">
+        <img src="logos/xls.png" alt="Cargar productos" />
+        Cargar productos
+      </button>
+      <button class="btn-primary large" *ngIf="seleccionados.size" (click)="eliminarSeleccionados()">
+        <img src="logos/delete.png" alt="Eliminar seleccionados" />
+        Eliminar seleccionados
+      </button>
+    </div>
+  </div>
+
+  <div class="tabla-wrapper">
+    <table class="tabla">
+      <thead>
+        <tr>
+          <th (click)="setOrden('codigo')">Código</th>
+          <th (click)="setOrden('nombre')">Nombre</th>
+          <th (click)="setOrden('categoria')">Categoría</th>
+          <th (click)="setOrden('proveedor')">Proveedor</th>
+          <th (click)="setOrden('precio')">Precio venta</th>
+          <th>Precio costo</th>
+          <th>% Ganancia</th>
+          <th (click)="setOrden('stock')">Stock</th>
+          <th class="acciones">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let p of productosVista" [class.low]="p.stock <= p.stockMinimo">
+          <td>
+            <input type="checkbox" [checked]="p.id && seleccionados.has(p.id)" (change)="toggleSeleccion(p.id)" />
+            {{ p.codigo }}
+          </td>
+          <td>{{ p.nombre }}</td>
+          <td>{{ p.categoria }}</td>
+          <td>{{ p.proveedor || '-' }}</td>
+          <td>{{ p.precio | currency:'ARS':'symbol-narrow':'1.2-2' }}</td>
+          <td>{{ getCosto(p) | currency:'ARS':'symbol-narrow':'1.2-2' }}</td>
+          <td>{{ getGananciaPct(p) | number:'1.0-2' }}%</td>
+          <td>
+            <span class="badge" [class.danger]="p.stock <= p.stockMinimo">{{ p.stock }}</span>
+          </td>
+          <td class="row-actions">
+            <button class="btn-light" (click)="verInfo(p)" title="Ver info">
+              <app-icon name="info" [size]="22" color="#2c3e50"></app-icon>
+            </button>
+            <a class="btn-secondary" [routerLink]="['/stock/editar', p.id]">Editar</a>
+            <button class="btn-danger" (click)="solicitarEliminar(p)">Eliminar</button>
+          </td>
+        </tr>
+        <tr *ngIf="!productosVista.length">
+          <td colspan="8" class="muted">No hay productos para mostrar.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  
+  <div class="mass-panel" *ngIf="showMassPrice">
+    <div class="card">
+      <div class="row between">
+        <div class="titulo">Aumentos/Descuentos masivos</div>
+        <button class="close" (click)="showMassPrice = false">×</button>
+      </div>
+      <div class="controls">
+        <div class="grp">
+          <label>Tipo de acción</label>
+          <select [(ngModel)]="massActionMode">
+            <option value="precio">Aumento/Descuento de precios (%)</option>
+            <option value="stock">Ajuste de stock (cantidad)</option>
+          </select>
+        </div>
+        <div class="grp" *ngIf="massActionMode === 'precio'">
+          <label>Porcentaje</label>
+          <input type="number" [(ngModel)]="porcentaje" placeholder="Ej: 10 ó -5" />
+        </div>
+        <div class="grp" *ngIf="massActionMode === 'stock'">
+          <label>Cantidad a sumar/restar</label>
+          <input type="number" [(ngModel)]="cantidadStock" placeholder="Ej: 5 ó -3" />
+        </div>
+        <div class="grp">
+          <label>Por categoría (opcional)</label>
+          <select [(ngModel)]="categoriaAumento">
+            <option value="">Todas</option>
+            <option *ngFor="let c of categorias" [value]="c">{{ c }}</option>
+          </select>
+        </div>
+      </div>
+      <div class="help">
+        - Si seleccionás productos en la tabla, se aplica sólo a esos.
+        - Si elegís una categoría, se aplica a esa categoría.
+        - Si no seleccionás nada, aplica a todos los productos filtrados actualmente.
+        - En "Ajuste de stock" la cantidad puede ser negativa para descontar.
+      </div>
+      <div class="actions">
+        <button class="btn-secondary" (click)="seleccionarTodosVista()">Seleccionar visibles</button>
+        <button class="btn-secondary" (click)="limpiarSeleccion()">Limpiar selección</button>
+        <button class="btn-primary" (click)="aplicarAumento()">Aplicar</button>
+      </div>
+    </div>
+  </div>
+  
+  
+  <div class="modal-backdrop" *ngIf="productoDetalle" (click)="cerrarInfo()"></div>
+  <div class="modal" *ngIf="productoDetalle">
+    <div class="modal-header">
+      <h3>Información de producto</h3>
+      <button class="close" (click)="cerrarInfo()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="row"><strong>Código:</strong> {{ productoDetalle!.codigo }}</div>
+      <div class="row"><strong>Nombre:</strong> {{ productoDetalle!.nombre }}</div>
+      <div class="row"><strong>Categoría:</strong> {{ productoDetalle!.categoria }}</div>
+      <div class="row"><strong>Precio:</strong> {{ productoDetalle!.precio | currency:'ARS':'symbol-narrow':'1.2-2' }}</div>
+      <div class="row"><strong>Stock:</strong> {{ productoDetalle!.stock }} (mín: {{ productoDetalle!.stockMinimo }})</div>
+      <div class="row"><strong>Proveedor:</strong> {{ productoDetalle!.proveedor || '-' }}</div>
+      <div class="row"><strong>Descripción:</strong> {{ productoDetalle!.descripcion || '-' }}</div>
+      <div class="row"><strong>Creado:</strong> {{ productoDetalle!.fechaCreacion | date:'short' }}</div>
+      <div class="row" *ngIf="productoDetalle?.caracteristicas && (productoDetalle?.caracteristicas | keyvalue)?.length">
+        <strong>Características:</strong>
+        <ul>
+          <li *ngFor="let kv of (productoDetalle?.caracteristicas | keyvalue)">
+            {{ kv.key }}: {{ kv.value }}
+          </li>
+        </ul>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" [routerLink]="['/stock/editar', productoDetalle.id]" (click)="cerrarInfo()">Editar</button>
+    </div>
+  </div>
+
+  
+  <div class="modal-backdrop" *ngIf="productoAEliminar" (click)="cancelarEliminar()"></div>
+  <div class="modal" *ngIf="productoAEliminar">
+    <div class="modal-header">
+      <h3>Eliminar producto</h3>
+      <button class="close" (click)="cancelarEliminar()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="row">
+        ¿Querés eliminar
+        <b>{{ productoAEliminar!.nombre }}</b>
+        ({{ productoAEliminar!.codigo }})? Esta acción no se puede deshacer.
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-secondary" (click)="cancelarEliminar()">Cancelar</button>
+      <button class="btn-danger" (click)="confirmarEliminar()">Eliminar</button>
+    </div>
+  </div>
+
+  <div class="modal-backdrop" *ngIf="mostrarCargaExcel" (click)="cancelarCargaExcel()"></div>
+  <div class="modal" *ngIf="mostrarCargaExcel">
+    <div class="modal-header">
+      <h3>Cargar productos desde Excel</h3>
+      <button class="close" (click)="cancelarCargaExcel()">×</button>
+    </div>
+    <div class="modal-body">
+      <div class="confirm-form">
+        <div class="row">
+          <label>Archivo Excel (*.xlsx)</label>
+          <input type="file" accept=".xlsx,.xls" (change)="onArchivoExcelSeleccionado($event)" />
+        </div>
+        <div class="row">
+          <div class="help">Formato esperado de columnas: CODIGO, NOMBRE, CATEGORIA, PRECIO DE COSTO, PORCENTAJE GANANCIA, PROVEEDOR, DESCRIPCION (opcional). El precio final se calcula como costo × (1 + porcentaje/100). El stock se cargará en 0.</div>
+        </div>
+        <div class="row" *ngIf="resumenCarga">
+          <div>{{ resumenCarga }}</div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn-cancel" (click)="cancelarCargaExcel()">Cancelar</button>
+      <button class="btn-primary" [disabled]="!archivoExcel" (click)="procesarExcel()">Procesar</button>
+    </div>
+  </div>
+</div>
