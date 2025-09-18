@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, ipcMain, dialog, shell } = require("electron");
+const { app, BrowserWindow, Menu, ipcMain, dialog, shell, screen } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const Database = require("better-sqlite3");
@@ -76,6 +76,26 @@ function createWindow() {
       path.join(__dirname, "../dist/ferreteria-app/browser/index.html")
     );
   }
+
+  // Aplicar zoom tipo Ctrl+- con factor dinámico según resolución
+  try {
+    const computeZoom = ({ width, height }) => {
+      if (width >= 1900 && height >= 1000) return 1.0;
+      if (width >= 1600 && height >= 900) return 0.9;
+      if (width >= 1366 && height >= 768) return 0.8;
+      return 0.75;
+    };
+    const applyZoom = () => {
+      const { workAreaSize } = screen.getPrimaryDisplay();
+      const z = computeZoom(workAreaSize || { width: 1920, height: 1080 });
+      try { mainWindow.webContents.setZoomFactor(z); } catch {}
+    };
+    mainWindow.webContents.on('did-finish-load', applyZoom);
+    // Reaplicar zoom al restaurar/minimizar para evitar que quede chico
+    mainWindow.on('restore', applyZoom);
+    mainWindow.on('focus', applyZoom);
+    app.on('browser-window-focus', applyZoom);
+  } catch {}
 
   mainWindow.on("closed", () => {
     mainWindow = null;
@@ -455,22 +475,13 @@ ipcMain.handle('escpos:print-ticket', async (_event, payload) => {
           line();
           // Calcular base SIN descuento (lo que querés que figure como TOTAL)
           const base = (items || []).reduce((acc, it) => acc + Math.round(Number(it.subtotal || (Number(it.cantidad||0) * Number(it.precio||0)))), 0);
-          // Regla de redondeo: si faltan hasta 40 al próximo 100, redondear hacia arriba
-          const resto = base % 100;
+          // Nueva regla: siempre redondear hacia arriba al próximo múltiplo de 50
           let redondeoCalc = 0;
           if (aplicarRedondeo) {
-            if (resto <= 50) {
-              const falt50 = 50 - resto;
-              if (falt50 > 0 && falt50 <= 20) redondeoCalc = falt50;
-            }
-            if (redondeoCalc === 0) {
-              const falt100 = resto === 0 ? 0 : (100 - resto);
-              if (falt100 > 0 && falt100 <= 40) redondeoCalc = falt100;
-            }
+            const resto50 = base % 50;
+            redondeoCalc = resto50 === 0 ? 0 : (50 - resto50);
           }
-          if (redondeoCalc > 0) {
-            printer.align('rt').text(`Redondeo: $${money(redondeoCalc)}`).align('lt');
-          }
+          // Ocultar línea de redondeo en el ticket
           const totalFinal = base + redondeoCalc;
           printer.align('rt').style('b').text(`TOTAL: $${money(totalFinal)}`).style('normal').align('lt');
           printer.text('');
@@ -827,6 +838,35 @@ ipcMain.handle("kv:set", async (_event, { key, value }) => {
   }
 });
 
+// Abrir caja registradora (RJ11) vía pulso ESC/POS
+ipcMain.handle('escpos:open-drawer', async () => {
+  try {
+    let escpos; let USB;
+    try { escpos = require('escpos'); USB = require('escpos-usb'); }
+    catch (e) { return { ok: false, error: 'Faltan dependencias escpos/escpos-usb' }; }
+    escpos.USB = USB;
+    const device = new escpos.USB();
+    const printer = new escpos.Printer(device, { encoding: 'CP858' });
+    await new Promise((resolve, reject) => {
+      device.open(function(err){
+        if (err) return reject(err);
+        try {
+          // Enviar pulso a cajón (pin 2). Algunas impresoras usan 2 o 5
+          try { printer.cashdraw(2); } catch { try { printer.cashdraw(); } catch {} }
+          try { printer.close(); } catch {}
+          resolve();
+        } catch (e) {
+          try { printer.close(); } catch {}
+          reject(e);
+        }
+      });
+    });
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
 // Abrir carpeta de datos de la app o resaltar el archivo de base de datos
 ipcMain.handle("open-data-folder", async () => {
   try {
@@ -841,3 +881,4 @@ ipcMain.handle("open-data-folder", async () => {
     return { ok: false };
   }
 });
+

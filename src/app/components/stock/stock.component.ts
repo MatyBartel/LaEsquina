@@ -30,6 +30,7 @@ export class StockComponent implements OnInit, OnDestroy {
   archivoExcel: File | null = null;
   resumenCarga = '';
   ultimaImportacionIds: number[] = [];
+  resumenValidaciones = '';
 
   showMassPrice = false;
   porcentaje = 0;
@@ -37,6 +38,10 @@ export class StockComponent implements OnInit, OnDestroy {
   categoriaAumento = '';
   massActionMode: 'precio' | 'stock' = 'precio';
   cantidadStock = 0;
+  codigosDuplicados: string[] = [];
+  // Paginación
+  page = 1;
+  pageSize = 10;
 
   constructor(private db: DatabaseService, private toast: ToastService) {}
 
@@ -52,6 +57,10 @@ export class StockComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.sub?.unsubscribe();
     this.subCategorias?.unsubscribe();
+  }
+
+  trackByProducto(_idx: number, p: Producto): number | string {
+    return p.id || p.codigo;
   }
 
   setOrden(campo: 'codigo' | 'nombre' | 'categoria' | 'proveedor' | 'precio' | 'stock'): void {
@@ -86,7 +95,44 @@ export class StockComponent implements OnInit, OnDestroy {
       return this.ordenAsc ? comp : -comp;
     });
 
-    return arr;
+    // Paginación
+    const total = arr.length;
+    const maxPage = Math.max(1, Math.ceil(total / this.pageSize));
+    if (this.page > maxPage) this.page = maxPage;
+    const start = (this.page - 1) * this.pageSize;
+    return arr.slice(start, start + this.pageSize);
+  }
+
+  get totalFiltrados(): number {
+    const term = (this.filtroGeneral || '').toLowerCase();
+    let arr = this.productos.filter(p =>
+      p.codigo.toLowerCase().includes(term) ||
+      p.nombre.toLowerCase().includes(term) ||
+      p.categoria.toLowerCase().includes(term) ||
+      (p.proveedor || '').toLowerCase().includes(term)
+    );
+    if (this.categoriaFiltro) arr = arr.filter(p => p.categoria === this.categoriaFiltro);
+    return arr.length;
+  }
+
+  setPageSize(size: number): void {
+    this.pageSize = Math.max(10, Math.min(500, Math.trunc(size)));
+    this.page = 1;
+  }
+
+  goToPage(p: number): void {
+    const max = Math.max(1, Math.ceil(this.totalFiltrados / this.pageSize));
+    this.page = Math.max(1, Math.min(max, Math.trunc(p)));
+  }
+
+  // Getters para plantilla (evitar usar Math.* en HTML)
+  get paginaDesde(): number {
+    if (this.totalFiltrados === 0) return 0;
+    return (this.page - 1) * this.pageSize + 1;
+  }
+  get paginaHasta(): number {
+    const fin = this.page * this.pageSize;
+    return fin > this.totalFiltrados ? this.totalFiltrados : fin;
   }
 
   solicitarEliminar(p: Producto): void {
@@ -130,16 +176,30 @@ export class StockComponent implements OnInit, OnDestroy {
       const wb = read(new Uint8Array(buffer), { type: 'array' });
       const productosCreados: number[] = [];
       let procesados = 0;
+      const codigosVistos = new Set<string>();
+      const duplicados: string[] = [];
+      const updatesStockBatch: Record<string, number> = {};
       for (const sheetName of wb.SheetNames) {
         const ws = wb.Sheets[sheetName];
         if (!ws) continue;
         const rows: any[] = utils.sheet_to_json(ws, { defval: '' });
         for (const row of rows) {
           procesados++;
+          // Normalizar para detectar columna de stock (si existe en el archivo)
+          const normalized: Record<string, any> = {};
+          for (const [k, v] of Object.entries(row)) normalized[String(k).trim().toLowerCase()] = v;
+          const stockRaw = Object.entries(normalized).find(([kk]) => kk.includes('stock'))?.[1];
+          const stockNum = Number(String(stockRaw ?? '').toString().replace(/[^0-9.-]/g, '').replace(',', '.'));
+
           const p = this.mapRowToProducto(row);
           if (!p) continue;
+          const codigo = (p.codigo || '').trim();
+          if (codigosVistos.has(codigo)) { duplicados.push(codigo); continue; }
+          if (codigo) codigosVistos.add(codigo);
+
           const existente = this.db.getProductoByCodigo(p.codigo);
           if (existente) {
+            // No modificar stock existente; solo actualizar otros campos si cambian
             const actualizado = {
               ...existente,
               nombre: p.nombre,
@@ -153,15 +213,26 @@ export class StockComponent implements OnInit, OnDestroy {
               }
             } as Producto;
             this.db.actualizarProducto(actualizado);
+            // Importante: NO agregar a updatesStockBatch
           } else {
+            // Producto nuevo: permitir cargar stock inicial si viene en el Excel
+            if (!isNaN(stockNum)) {
+              p.stock = Math.max(0, Math.trunc(stockNum));
+            }
             this.db.agregarProducto(p);
             if (p.id) productosCreados.push(p.id);
           }
         }
       }
+      // Aplicar batch de stock al final para eficiencia
+      const batchRes = this.db.actualizarStocksPorCodigoBatch(updatesStockBatch);
       this.ultimaImportacionIds = productosCreados;
-      this.toast.show(`Procesado: ${procesados}. Nuevos: ${productosCreados.length}.`, 'success');
-      this.resumenCarga = `Procesado: ${procesados}. Nuevos: ${productosCreados.length}.`;
+      this.codigosDuplicados = Array.from(new Set(duplicados));
+      const dupTxt = this.codigosDuplicados.length ? ` • Duplicados: ${this.codigosDuplicados.join(', ')}` : '';
+      const unknownTxt = (batchRes.unknown && batchRes.unknown.length) ? ` • Códigos sin match: ${batchRes.unknown.slice(0,10).join(', ')}${batchRes.unknown.length>10?'...':''}` : '';
+      this.resumenCarga = `Procesados: ${procesados}. Nuevos: ${productosCreados.length}. Stocks actualizados: ${batchRes.updated}.${dupTxt}${unknownTxt}`;
+      this.resumenValidaciones = `${this.codigosDuplicados.length ? ('Duplicados: ' + this.codigosDuplicados.join(', ')) : ''} ${batchRes.unknown.length ? ('Códigos sin match: ' + batchRes.unknown.length + '.') : ''}`.trim();
+      this.toast.show(`Procesados: ${procesados}. Nuevos: ${productosCreados.length}. Stocks: ${batchRes.updated}.${this.codigosDuplicados.length?(' Duplicados: '+this.codigosDuplicados.length+'.'):''}${batchRes.unknown.length?(' Sin match: '+batchRes.unknown.length+'.'):''}`, 'success');
       this.mostrarCargaExcel = false;
     } catch (e) {
       this.toast.show('No se pudo leer el Excel. Verificá el formato.', 'error');
@@ -331,5 +402,18 @@ export class StockComponent implements OnInit, OnDestroy {
     this.toast.show(`Stock actualizado (±${cant} en ${afectadas.length} productos, ${scopeTxt}).`);
     this.showMassPrice = false;
     this.limpiarSeleccion();
+  }
+
+  onStockChange(p: Producto, value: any): void {
+    const raw = String(value ?? '');
+    const num = Number(raw.replace(/[^0-9.-]/g, '').replace(',', '.'));
+    const entero = Math.max(0, Math.trunc(isNaN(num) ? 0 : num));
+    p.stock = entero;
+  }
+
+  onStockBlur(p: Producto): void {
+    const val = Math.max(0, Math.trunc(Number(p.stock || 0)));
+    if (p.stock !== val) p.stock = val;
+    this.db.actualizarProducto(p);
   }
 }

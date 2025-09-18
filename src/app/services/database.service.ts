@@ -22,6 +22,7 @@ export interface Venta {
   productos: VentaProducto[];
   total: number;
   redondeo?: number;
+  totalManual?: number;
   descuentoPct?: number;
   descuentoMonto?: number;
   metodoPago: string;
@@ -278,6 +279,35 @@ export class DatabaseService {
     this.persistirSqliteKv('productos', this.productosSubject.value);
   }
 
+  actualizarStocksPorCodigoBatch(updates: Record<string, number>): { updated: number; unknown: string[] } {
+    const productos = this.productosSubject.value;
+    if (!updates || typeof updates !== 'object') return { updated: 0, unknown: [] };
+    const codigoToIndex = new Map<string, number>();
+    for (let i = 0; i < productos.length; i++) {
+      const c = (productos[i].codigo || '').trim();
+      if (c) codigoToIndex.set(c, i);
+    }
+    const unknown: string[] = [];
+    let updatedCount = 0;
+    for (const [codigoRaw, stockVal] of Object.entries(updates)) {
+      const codigo = (codigoRaw || '').trim();
+      const idx = codigoToIndex.get(codigo);
+      if (idx === undefined) { unknown.push(codigo); continue; }
+      const nuevoStock = Math.max(0, Math.trunc(Number(stockVal || 0)));
+      if (!isFinite(nuevoStock)) { continue; }
+      if (productos[idx].stock !== nuevoStock) {
+        productos[idx] = { ...productos[idx], stock: nuevoStock };
+        updatedCount++;
+      }
+    }
+    if (updatedCount > 0) {
+      this.productosSubject.next([...productos]);
+      this.persistirProductos();
+      this.persistirSqliteKv('productos', this.productosSubject.value);
+    }
+    return { updated: updatedCount, unknown };
+  }
+
   actualizarStock(id: number, cantidad: number): void {
     const productos = this.productosSubject.value;
     const index = productos.findIndex(p => p.id === id);
@@ -328,7 +358,12 @@ export class DatabaseService {
     }
     const base = Math.max(0, Number((total - descuento).toFixed(2)));
     const redondeo = Number(venta.redondeo || 0);
-    venta.total = Math.max(0, Math.round(base + redondeo));
+    const totalManualVal = Number((venta as any).totalManual || 0);
+    if (!isNaN(totalManualVal) && totalManualVal > 0) {
+      venta.total = Math.max(0, Math.round(totalManualVal));
+    } else {
+      venta.total = Math.max(0, Math.round(base + redondeo));
+    }
     if (!venta.pagos) { venta.pagos = []; }
 
     this.ventasSubject.next([...ventas, venta]);

@@ -52,7 +52,8 @@
     "electron:dev": "concurrently \"npm run start\" \"wait-on http://localhost:4200 && set NODE_ENV=development && electron electron/main.js\"",
     "electron:build": "npm run build && electron-builder",
     "electron:pack": "npm run build && electron-builder --dir",
-    "postinstall": "electron-builder install-app-deps"
+    "postinstall": "electron-builder install-app-deps",
+    "mock:productos": "node ./scripts/generar_mock_productos.mjs 1500"
   },
   "build": {
     "appId": "com.ferreteria.app",

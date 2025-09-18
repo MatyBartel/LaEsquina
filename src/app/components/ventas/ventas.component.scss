@@ -22,6 +22,16 @@ h1 { color: #ffffff; margin-bottom: 10px; text-align: center; font-size: 40px;}
 .carrito input[type=number] { width: 70px; }
 .carrito .danger { background: #e74c3c; color: #fff; border: none; border-radius: 8px; padding: 6px 10px; cursor: pointer; }
 .carrito .total { text-align: right; font-weight: 600; margin-top: 8px; }
+.carrito .editable-total { cursor: default; }
+.carrito .editable-total .total-input {
+  width: 160px;
+  text-align: right;
+  padding: 8px 12px;
+  border-radius: 999px;
+  border: 1px solid #dbe6f3;
+  background: #ffffff;
+  box-shadow: 0 6px 14px rgba(0,0,0,0.05);
+}
 
 .vendedor-box { display: flex; align-items: center; gap: 8px; margin-top: 8px; justify-content: flex-end; }
 .vendedor-box select { padding: 8px 10px; border: 1px solid #dfe6e9; border-radius: 8px; }

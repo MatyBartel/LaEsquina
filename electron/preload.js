@@ -28,6 +28,9 @@ contextBridge.exposeInMainWorld('electronAPI', {
   escposPrint: async (payload) => {
     try { return await ipcRenderer.invoke('escpos:print-ticket', payload); } catch (e) { return { ok:false, error: e?.message || String(e) }; }
   },
+  openCashDrawer: async () => {
+    try { return await ipcRenderer.invoke('escpos:open-drawer'); } catch (e) { return { ok:false, error: e?.message || String(e) }; }
+  },
   saveFile: async (data, options = {}) => {
     try {
       return await ipcRenderer.invoke('save-file', {

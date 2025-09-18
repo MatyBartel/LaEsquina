@@ -52,7 +52,7 @@
         </tr>
       </thead>
       <tbody>
-        <tr *ngFor="let p of productosVista" [class.low]="p.stock <= p.stockMinimo">
+        <tr *ngFor="let p of productosVista; trackBy: trackByProducto" [class.low]="p.stock <= p.stockMinimo">
           <td>
             <input type="checkbox" [checked]="p.id && seleccionados.has(p.id)" (change)="toggleSeleccion(p.id)" />
             {{ p.codigo }}
@@ -64,7 +64,7 @@
           <td>{{ getCosto(p) | currency:'ARS':'symbol-narrow':'1.2-2' }}</td>
           <td>{{ getGananciaPct(p) | number:'1.0-2' }}%</td>
           <td>
-            <span class="badge" [class.danger]="p.stock <= p.stockMinimo">{{ p.stock }}</span>
+            <input type="number" min="0" [ngModel]="p.stock" (ngModelChange)="onStockChange(p, $event)" (blur)="onStockBlur(p)" style="width:80px;text-align:right" />
           </td>
           <td class="row-actions">
             <button class="btn-light" (click)="verInfo(p)" title="Ver info">
@@ -79,6 +79,17 @@
         </tr>
       </tbody>
     </table>
+  </div>
+
+  <div class="paginacion" *ngIf="true">
+    <div class="info">Mostrando {{ paginaDesde }}–{{ paginaHasta }} de {{ totalFiltrados }}</div>
+    <div class="controles">
+      <button class="btn-light" (click)="goToPage(1)" [disabled]="page===1">«</button>
+      <button class="btn-light" (click)="goToPage(page-1)" [disabled]="page===1">‹</button>
+      <span class="pagina">{{ page }}</span>
+      <button class="btn-light" (click)="goToPage(page+1)" [disabled]="page*pageSize>=totalFiltrados">›</button>
+      <button class="btn-light" (click)="goToPage(999999)" [disabled]="page*pageSize>=totalFiltrados">»</button>
+    </div>
   </div>
 
   
@@ -193,6 +204,9 @@
         </div>
         <div class="row" *ngIf="resumenCarga">
           <div>{{ resumenCarga }}</div>
+        </div>
+        <div class="row" *ngIf="resumenValidaciones">
+          <div class="help">{{ resumenValidaciones }}</div>
         </div>
       </div>
     </div>

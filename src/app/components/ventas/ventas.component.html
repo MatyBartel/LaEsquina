@@ -10,7 +10,7 @@
         </div>
       </div>
       <ul class="lista">
-        <li *ngFor="let p of productosFiltrados">
+        <li *ngFor="let p of productosCatalogoPaginados; trackBy: trackByProductoCatalogo">
           <div class="info">
             <div class="nombre">{{ p.nombre }}</div>
             <div class="meta meta-principal">{{ p.codigo }} • ${{ p.precio | number:'1.0-0' }} • Stock: {{ p.stock }}</div>
@@ -19,6 +19,16 @@
           <button class="add" (click)="agregarAlCarrito(p)"><app-icon name="plus" [size]="18" color="#ffffff"></app-icon></button>
         </li>
       </ul>
+      <div class="paginacion" *ngIf="productosFiltradosTotal > pageSizeCatalogo" style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
+        <div class="info">Mostrando {{ paginaDesdeCatalogo }}–{{ paginaHastaCatalogo }} de {{ productosFiltradosTotal }}</div>
+        <div class="controles" style="display:flex;gap:8px;align-items:center;">
+          <button class="ghost" (click)="goToPageCatalogo(1)" [disabled]="pageCatalogo===1">«</button>
+          <button class="ghost" (click)="goToPageCatalogo(pageCatalogo-1)" [disabled]="pageCatalogo===1">‹</button>
+          <span class="pill">{{ pageCatalogo }}</span>
+          <button class="ghost" (click)="goToPageCatalogo(pageCatalogo+1)" [disabled]="pageCatalogo*pageSizeCatalogo>=productosFiltradosTotal">›</button>
+          <button class="ghost" (click)="goToPageCatalogo(999999)" [disabled]="pageCatalogo*pageSizeCatalogo>=productosFiltradosTotal">»</button>
+        </div>
+      </div>
     </section>
 
     <section class="carrito">
@@ -35,7 +45,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr *ngFor="let vp of carrito">
+          <tr *ngFor="let vp of carritoPaginado">
             <td>{{ vp.nombre }}</td>
             <td><input type="text" inputmode="decimal" pattern="[0-9.,]*" [(ngModel)]="vp.editCantidad" (ngModelChange)="onCantidadChange(vp, $event)" (blur)="onCantidadBlur(vp)" /></td>
             <td>${{ vp.precioUnitario | number:'1.0-0' }}</td>
@@ -47,6 +57,14 @@
           </tr>
         </tbody>
       </table>
+      </div>
+      <div class="paginacion" *ngIf="totalItemsCarrito > pageSizeCarrito" style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:6px;">
+        <span>{{ paginaDesdeCarrito }}–{{ paginaHastaCarrito }} de {{ totalItemsCarrito }}</span>
+        <button class="ghost" (click)="goToPageCarrito(1)" [disabled]="pageCarrito===1">«</button>
+        <button class="ghost" (click)="goToPageCarrito(pageCarrito-1)" [disabled]="pageCarrito===1">Anterior</button>
+        <span class="pill">{{ pageCarrito }}</span>
+        <button class="ghost" (click)="goToPageCarrito(pageCarrito+1)" [disabled]="pageCarrito*pageSizeCarrito>=totalItemsCarrito">Siguiente</button>
+        <button class="ghost" (click)="goToPageCarrito(999999)" [disabled]="pageCarrito*pageSizeCarrito>=totalItemsCarrito">»</button>
       </div>
       <div class="vendedor-box">
         <label>Vendedor:</label>
@@ -76,8 +94,16 @@
           <input type="checkbox" [(ngModel)]="aplicarRedondeo" /> Aplicar redondeo al total
         </label>
       </div>
-      <div class="total" *ngIf="redondeoCarrito > 0">Redondeo: ${{ redondeoCarrito | number:'1.0-0' }}</div>
-      <div class="total">Total: ${{ totalConRedondeo | number:'1.0-0' }}</div>
+      <div class="total" *ngIf="redondeoCarrito > 0 && totalManual === 0">Redondeo: ${{ redondeoCarrito | number:'1.0-0' }}</div>
+      <div class="total editable-total" *ngIf="!editTotalManual" (dblclick)="startEditTotal()" title="Doble clic para editar">
+        Total: ${{ totalConRedondeo | number:'1.0-0' }}
+      </div>
+      <div class="total editable-total" *ngIf="editTotalManual" style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
+        <span>Total:</span>
+        <span>$</span>
+        <input class="total-input" type="text" [ngModel]="totalManualStr" (ngModelChange)="totalManualStr=$event" (input)="onTotalManualInput($event)" (blur)="finishEditTotal()" (keyup.enter)="finishEditTotal()" placeholder="0" />
+        <button class="chip" (click)="clearTotalManual()">Limpiar</button>
+      </div>
       <div class="total vuelto" *ngIf="vuelto > 0">Vuelto: ${{ vuelto | number:'1.0-0' }}</div>
 
       <div class="pagos">
@@ -145,7 +171,7 @@
         </div>
       </div>
       <div class="ultimas-list">
-      <div class="venta" *ngFor="let v of ventasDelDia">
+      <div class="venta" *ngFor="let v of ventasDelDiaPaginadas">
         <div class="cab">
           <span class="num">{{ v.numeroTicket }}</span>
           <span class="fecha">{{ v.fecha | date:'short' }}</span>
@@ -168,6 +194,22 @@
         <div class="acciones-venta">
           <button type="button" class="danger" (click)="solicitarEliminarVenta(v)">Eliminar</button>
           <button type="button" class="primario" (click)="imprimirTicketVenta(v)" title="Imprimir ticket">Ticket</button>
+        </div>
+      </div>
+      <div class="paginacion" *ngIf="totalVentasFiltradas > pageSizeVentas" style="margin-top:8px;display:flex;justify-content:space-between;align-items:center;">
+        <div>Mostrando {{ paginaDesdeVentas }}–{{ paginaHastaVentas }} de {{ totalVentasFiltradas }}</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <button class="btn-light" (click)="goToPageVentas(1)" [disabled]="pageVentas===1">«</button>
+          <button class="btn-light" (click)="goToPageVentas(pageVentas-1)" [disabled]="pageVentas===1">Anterior</button>
+          <span class="pill">{{ pageVentas }}</span>
+          <button class="btn-light" (click)="goToPageVentas(pageVentas+1)" [disabled]="pageVentas*pageSizeVentas>=totalVentasFiltradas">Siguiente</button>
+          <button class="btn-light" (click)="goToPageVentas(999999)" [disabled]="pageVentas*pageSizeVentas>=totalVentasFiltradas">»</button>
+          <select [(ngModel)]="pageSizeVentas" (ngModelChange)="setPageSizeVentas($event)">
+            <option [ngValue]="10">10</option>
+            <option [ngValue]="20">20</option>
+            <option [ngValue]="50">50</option>
+            <option [ngValue]="100">100</option>
+          </select>
         </div>
       </div>
       </div>
@@ -228,7 +270,7 @@
                 </tr>
               </thead>
               <tbody>
-                <tr *ngFor="let vp of carrito">
+                <tr *ngFor="let vp of (totalManual>0 ? carritoResumen : carrito)">
                   <td>{{ vp.nombre }}</td>
                   <td>{{ vp.cantidad }}</td>
                   <td>${{ vp.precioUnitario | number:'1.0-0' }}</td>
@@ -240,7 +282,7 @@
                   <td colspan="3" class="right">Descuento ({{ descuentoPct }}%)</td>
                   <td class="negativo">- ${{ descuentoMonto | number:'1.0-0' }}</td>
                 </tr>
-                <tr *ngIf="redondeoCarrito > 0">
+                <tr *ngIf="redondeoCarrito > 0 && totalManual === 0">
                   <td colspan="3" class="right">Redondeo</td>
                   <td>${{ redondeoCarrito | number:'1.0-0' }}</td>
                 </tr>

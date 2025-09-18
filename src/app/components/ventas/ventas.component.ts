@@ -35,6 +35,18 @@ export class VentasComponent implements OnInit, OnDestroy {
   mostrarResumenVenta = false;
   ahora: Date = new Date();
   aplicarRedondeo = false;
+  totalManualStr: string = '';
+  get totalManual(): number { return Math.max(0, Math.round(Number((this.totalManualStr || '').replace(/\D+/g,'') || 0))); }
+  onTotalManualInput(ev: Event): void {
+    const input = ev.target as HTMLInputElement;
+    const digits = (input.value || '').replace(/\D+/g, '');
+    this.totalManualStr = digits;
+  }
+  editTotalManual = false;
+  toggleEditTotalManual(): void { this.editTotalManual = !this.editTotalManual; }
+  startEditTotal(): void { this.editTotalManual = true; }
+  finishEditTotal(): void { this.editTotalManual = false; }
+  clearTotalManual(): void { this.totalManualStr = ''; this.editTotalManual = false; }
 
   constructor(private db: DatabaseService, private toast: ToastService) {}
 
@@ -58,6 +70,54 @@ export class VentasComponent implements OnInit, OnDestroy {
     return this.productos.filter(p =>
       p.nombre.toLowerCase().includes(t) || p.codigo.toLowerCase().includes(t)
     );
+  }
+
+  // Paginación del catálogo de productos (columna izquierda)
+  pageCatalogo = 1;
+  pageSizeCatalogo = 20;
+  get productosFiltradosTotal(): number {
+    const t = (this.filtro || '').toLowerCase();
+    return this.productos.filter(p => p.nombre.toLowerCase().includes(t) || p.codigo.toLowerCase().includes(t)).length;
+  }
+  get productosCatalogoPaginados(): Producto[] {
+    const arr = this.productosFiltrados;
+    const total = arr.length;
+    const max = Math.max(1, Math.ceil(total / this.pageSizeCatalogo));
+    if (this.pageCatalogo > max) this.pageCatalogo = max;
+    const start = (this.pageCatalogo - 1) * this.pageSizeCatalogo;
+    return arr.slice(start, start + this.pageSizeCatalogo);
+  }
+  get paginaDesdeCatalogo(): number { return this.productosFiltradosTotal ? ((this.pageCatalogo - 1) * this.pageSizeCatalogo + 1) : 0; }
+  get paginaHastaCatalogo(): number {
+    const fin = this.pageCatalogo * this.pageSizeCatalogo;
+    return fin > this.productosFiltradosTotal ? this.productosFiltradosTotal : fin;
+  }
+  goToPageCatalogo(p: number): void {
+    const max = Math.max(1, Math.ceil(this.productosFiltradosTotal / this.pageSizeCatalogo));
+    this.pageCatalogo = Math.max(1, Math.min(max, Math.trunc(p)));
+  }
+  trackByProductoCatalogo(_i: number, p: Producto): number | string { return p.id || p.codigo; }
+
+  // Paginación del carrito (productos en la venta)
+  pageCarrito = 1;
+  pageSizeCarrito = 6;
+  get carritoPaginado(): VentaProductoExt[] {
+    const arr = this.carrito || [];
+    const total = arr.length;
+    const max = Math.max(1, Math.ceil(total / this.pageSizeCarrito));
+    if (this.pageCarrito > max) this.pageCarrito = max;
+    const start = (this.pageCarrito - 1) * this.pageSizeCarrito;
+    return arr.slice(start, start + this.pageSizeCarrito);
+  }
+  get totalItemsCarrito(): number { return (this.carrito || []).length; }
+  get paginaDesdeCarrito(): number { return this.totalItemsCarrito ? ((this.pageCarrito - 1) * this.pageSizeCarrito + 1) : 0; }
+  get paginaHastaCarrito(): number {
+    const fin = this.pageCarrito * this.pageSizeCarrito;
+    return fin > this.totalItemsCarrito ? this.totalItemsCarrito : fin;
+  }
+  goToPageCarrito(p: number): void {
+    const max = Math.max(1, Math.ceil(this.totalItemsCarrito / this.pageSizeCarrito));
+    this.pageCarrito = Math.max(1, Math.min(max, Math.trunc(p)));
   }
 
   agregarAlCarrito(p: Producto): void {
@@ -137,17 +197,30 @@ export class VentasComponent implements OnInit, OnDestroy {
   get redondeoCarrito(): number {
     if (!this.aplicarRedondeo) return 0;
     const total = Math.max(0, Math.round(this.totalCarrito));
-    const resto = total % 100;
-    if (resto <= 50) {
-      const falt50 = 50 - resto;
-      if (falt50 > 0 && falt50 <= 20) return falt50;
-    }
-    const falt100 = resto === 0 ? 0 : (100 - resto);
-    return falt100 > 0 && falt100 <= 40 ? falt100 : 0;
+    const resto50 = total % 50;
+    return resto50 === 0 ? 0 : (50 - resto50);
   }
 
   get totalConRedondeo(): number {
+    const manual = this.totalManual;
+    if (manual > 0) return manual;
     return Math.max(0, Math.round(this.totalCarrito + this.redondeoCarrito));
+  }
+
+  get carritoResumen(): Array<{ nombre: string; cantidad: number; precioUnitario: number; subtotal: number }> {
+    const baseItems = (this.carrito || []).map((vp:any)=>({ nombre: vp.nombre, cantidad: vp.cantidad, precioUnitario: vp.precioUnitario, subtotal: Math.round(Number(vp.subtotal)) }));
+    const totalDeseado = this.totalManual > 0 ? this.totalManual : 0;
+    if (!baseItems.length || totalDeseado === 0) return baseItems;
+    const sumaActual = baseItems.reduce((acc,it)=>acc+Math.round(Number(it.subtotal||0)),0);
+    if (sumaActual === totalDeseado) return baseItems;
+    const diff = totalDeseado - sumaActual;
+    const n = baseItems.length || 1;
+    const porItem = Math.trunc(diff / n);
+    const resto = diff - porItem * n;
+    return baseItems.map((it, idx) => ({
+      ...it,
+      subtotal: Math.max(0, Math.round(Number(it.subtotal || 0) + porItem + (idx < Math.abs(resto) ? Math.sign(resto) : 0)))
+    }));
   }
 
   get totalPagos(): number {
@@ -296,6 +369,7 @@ export class VentasComponent implements OnInit, OnDestroy {
       fecha: new Date(),
       productos: this.carrito.map(vp => ({ ...vp })),
       total: total,
+      totalManual: this.totalManual > 0 ? this.totalManual : undefined,
       redondeo: this.redondeoCarrito,
       descuentoPct: this.descuentoPct || 0,
       descuentoMonto: this.descuentoMonto || 0,
@@ -313,6 +387,13 @@ export class VentasComponent implements OnInit, OnDestroy {
     }
     this.toast.show('Venta registrada', 'success');
     this.mostrarResumenVenta = false;
+    // Intentar abrir cajón si hay API disponible
+    try {
+      const api: any = (window as any)?.electronAPI;
+      if (api && typeof api.openCashDrawer === 'function') {
+        api.openCashDrawer();
+      }
+    } catch {}
     this.carrito = [];
     this.pagos = [{ metodo: 'Efectivo', monto: 0 }];
     this.descuentoPct = 0;
@@ -353,6 +434,34 @@ export class VentasComponent implements OnInit, OnDestroy {
     return ventas
       .filter(v => v.fecha >= inicio && v.fecha <= fin)
       .sort((a, b) => b.fecha.getTime() - a.fecha.getTime());
+  }
+
+  // Paginación ventas
+  pageVentas = 1;
+  pageSizeVentas = 20;
+  get ventasDelDiaPaginadas(): Venta[] {
+    const arr = this.ventasDelDia;
+    const total = arr.length;
+    const max = Math.max(1, Math.ceil(total / this.pageSizeVentas));
+    if (this.pageVentas > max) this.pageVentas = max;
+    const start = (this.pageVentas - 1) * this.pageSizeVentas;
+    return arr.slice(start, start + this.pageSizeVentas);
+  }
+  get totalVentasFiltradas(): number { return this.ventasDelDia.length; }
+  setPageSizeVentas(size: number): void { this.pageSizeVentas = Math.max(10, Math.min(200, Math.trunc(size))); this.pageVentas = 1; }
+  goToPageVentas(p: number): void {
+    const max = Math.max(1, Math.ceil(this.totalVentasFiltradas / this.pageSizeVentas));
+    this.pageVentas = Math.max(1, Math.min(max, Math.trunc(p)));
+  }
+
+  // Getters para mostrar rangos sin usar Math en template
+  get paginaDesdeVentas(): number {
+    if (this.totalVentasFiltradas === 0) return 0;
+    return (this.pageVentas - 1) * this.pageSizeVentas + 1;
+  }
+  get paginaHastaVentas(): number {
+    const fin = this.pageVentas * this.pageSizeVentas;
+    return fin > this.totalVentasFiltradas ? this.totalVentasFiltradas : fin;
   }
 
   getTotalVentaMostrar(v: Venta): number {
@@ -566,9 +675,8 @@ export class VentasComponent implements OnInit, OnDestroy {
           descuento = Math.round(Number(venta.descuentoMonto));
         }
         const base = Math.max(0, subtotal - descuento);
-        const resto = base % 100;
-        const faltante = resto === 0 ? 0 : (100 - resto);
-        venta.redondeo = faltante > 0 && faltante <= 40 ? faltante : 0;
+        const resto50 = base % 50;
+        venta.redondeo = resto50 === 0 ? 0 : (50 - resto50);
         const totalCalc = Math.max(0, Math.round(base + (venta.redondeo || 0)));
         if (Math.abs(Number(venta.total || 0) - totalCalc) > 1) {
           venta.total = totalCalc;
@@ -577,17 +685,32 @@ export class VentasComponent implements OnInit, OnDestroy {
       const fecha = venta.fecha instanceof Date ? venta.fecha : new Date(venta.fecha);
       const two = (n:number)=>String(n).padStart(2,'0');
       const fechaStr = `${two(fecha.getDate())}/${two(fecha.getMonth()+1)}/${fecha.getFullYear()} ${two(fecha.getHours())}:${two(fecha.getMinutes())}`;
+      // Preparar ítems ajustando subtotales si hay totalManual para que sumen al total deseado
+      const baseItems = (venta.productos||[]).map((p:any)=>({ cantidad: p.cantidad, detalle: p.nombre, precio: p.precioUnitario, subtotal: Math.round(Number(p.subtotal)) }));
+      let itemsAImprimir = baseItems;
+      const totalDeseado = Math.max(0, Math.round(Number((venta as any).totalManual || venta.total || 0)));
+      const sumaActual = baseItems.reduce((acc,it)=>acc+Math.round(Number(it.subtotal||0)),0);
+      if (totalDeseado > 0 && Math.abs(totalDeseado - sumaActual) > 0) {
+        const diff = totalDeseado - sumaActual;
+        const n = baseItems.length || 1;
+        const porItem = Math.trunc(diff / n);
+        const resto = diff - porItem * n;
+        itemsAImprimir = baseItems.map((it, idx) => ({
+          ...it,
+          subtotal: Math.max(0, Math.round(Number(it.subtotal || 0) + porItem + (idx < Math.abs(resto) ? Math.sign(resto) : 0)))
+        }));
+      }
       const payload = {
         negocio: { nombre: 'Ferretería "El Tano"', dir1: 'Batalla de Ituzaingó 2739', dir2: '1888, Fcio. Varela' },
         fecha: fechaStr,
         numero: venta.numeroTicket,
         vendedor: venta.vendedor,
-        items: (venta.productos||[]).map((p:any)=>({ cantidad: p.cantidad, detalle: p.nombre, precio: p.precioUnitario, subtotal: p.subtotal })),
-        total: venta.total,
+        items: itemsAImprimir,
+        total: totalDeseado > 0 ? totalDeseado : venta.total,
         redondeo: Number((venta as any).redondeo || 0),
         descuentoPct: Number(venta.descuentoPct || 0),
         descuentoMonto: Number(venta.descuentoMonto || 0),
-        aplicarRedondeo: Number((venta as any).redondeo || 0) > 0
+        aplicarRedondeo: totalDeseado > 0 ? false : (Number((venta as any).redondeo || 0) > 0)
       };
       this.toast.show('Enviando a impresora térmica...', 'info');
       const res = await api.escposPrint(payload);
