@@ -1,0 +1,173 @@
+<div class="gastos-container">
+  <div class="page-header grid">
+    <div class="header-left"></div>
+    <div class="header-center">
+      <h1>Gastos</h1>
+    </div>
+    <div class="header-right">
+      <button type="button" class="btn-primary large btn-agregar" (click)="abrirNuevo()">
+        <img src="logos/add.png" alt="" aria-hidden="true" />
+        Agregar gasto
+      </button>
+    </div>
+  </div>
+
+  <div class="toolbar-panel">
+    <div class="toolbar-main">
+      <div class="periodo-nav">
+        <button type="button" class="btn-nav" (click)="mesAnterior()" title="Mes anterior">‹</button>
+        <select [ngModel]="mes" (ngModelChange)="onMesChange($event)">
+          <option *ngFor="let m of meses; index as i" [value]="i">{{ m }}</option>
+        </select>
+        <select [ngModel]="anio" (ngModelChange)="onAnioChange($event)">
+          <option *ngFor="let a of aniosDisponibles" [value]="a">{{ a }}</option>
+        </select>
+        <button type="button" class="btn-nav" (click)="mesSiguiente()" title="Mes siguiente">›</button>
+      </div>
+
+      <div class="toolbar-divider" aria-hidden="true"></div>
+
+      <div class="filtro-dia">
+        <input
+          type="date"
+          [ngModel]="diaFiltro"
+          (ngModelChange)="onDiaFiltroChange($event)"
+          title="Filtrar por día"
+        />
+        <button type="button" class="btn-clear-dia" *ngIf="diaFiltro" (click)="limpiarDiaFiltro()" title="Ver todo el mes">
+          ×
+        </button>
+      </div>
+
+      <div class="search">
+        <span class="icon"><app-icon name="search" [size]="18" color="#7f8c8d"></app-icon></span>
+        <input
+          type="text"
+          placeholder="Buscar descripción o categoría..."
+          [(ngModel)]="busqueda"
+          (ngModelChange)="onBusquedaChange()"
+        />
+        <button class="clear" *ngIf="busqueda" (click)="busqueda=''; onBusquedaChange()">×</button>
+      </div>
+
+      <div class="total-mes">
+        <span class="label">Total del mes</span>
+        <strong class="valor">{{ totalMes | currency:'ARS':'symbol-narrow':'1.2-2' }}</strong>
+      </div>
+    </div>
+
+    <div class="total-dia" *ngIf="diaFiltro">
+      <span class="label">Total del día</span>
+      <strong class="valor">{{ totalDia | currency:'ARS':'symbol-narrow':'1.2-2' }}</strong>
+    </div>
+  </div>
+
+  <div class="tabla-wrapper">
+    <table class="tabla">
+      <thead>
+        <tr>
+          <th>Fecha</th>
+          <th>Descripción</th>
+          <th>Categoría</th>
+          <th class="num">Monto</th>
+          <th class="acciones">Acciones</th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr *ngFor="let g of gastosFiltrados">
+          <td>{{ g.fecha | date:'dd/MM/yyyy' }}</td>
+          <td>{{ g.descripcion }}</td>
+          <td><span class="chip-cat">{{ g.categoria }}</span></td>
+          <td class="num">{{ g.monto | currency:'ARS':'symbol-narrow':'1.2-2' }}</td>
+          <td class="acciones">
+            <button type="button" class="btn tiny" (click)="abrirEditar(g)" title="Editar">
+              <app-icon name="edit" [size]="16"></app-icon>
+            </button>
+            <button type="button" class="btn tiny danger" (click)="eliminarGasto(g)" title="Eliminar">
+              <app-icon name="trash" [size]="16" color="#c0392b"></app-icon>
+            </button>
+          </td>
+        </tr>
+        <tr *ngIf="!gastosFiltrados.length">
+          <td colspan="5" class="empty">No hay gastos para este período.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="modal-backdrop" *ngIf="mostrarFormulario" (click)="cerrarFormulario()"></div>
+<div class="modal" *ngIf="mostrarFormulario" role="dialog">
+  <div class="modal-header">
+    <h2>{{ editId ? 'Editar gasto' : 'Agregar gasto' }}</h2>
+    <button type="button" class="btn-close" (click)="cerrarFormulario()">
+      <app-icon name="x" [size]="20"></app-icon>
+    </button>
+  </div>
+  <div class="modal-body">
+    <div class="form-group">
+      <label>Fecha*</label>
+      <input type="date" [(ngModel)]="form.fecha" />
+    </div>
+    <div class="form-group">
+      <label>Descripción*</label>
+      <input type="text" [(ngModel)]="form.descripcion" placeholder="Ej: Pago de luz" />
+    </div>
+    <div class="form-group">
+      <label>Categoría*</label>
+      <div class="categoria-row">
+        <select [(ngModel)]="form.categoria">
+          <option value="" disabled>Seleccioná categoría</option>
+          <option *ngFor="let c of categoriasParaSelect" [value]="c">{{ c }}</option>
+        </select>
+        <button type="button" class="btn-icon" title="Gestionar categorías" (click)="abrirModalCategorias()">
+          <app-icon name="plus" [size]="18" color="#fff"></app-icon>
+        </button>
+      </div>
+      <small class="hint" *ngIf="!categoriasGasto.length">Usá el botón + para crear categorías.</small>
+    </div>
+    <div class="form-group">
+      <label>Monto*</label>
+      <input type="number" step="0.01" min="0.01" [(ngModel)]="form.monto" />
+    </div>
+  </div>
+  <div class="modal-footer">
+    <button type="button" class="btn light" (click)="cerrarFormulario()">Cancelar</button>
+    <button type="button" class="btn primary" (click)="guardarGasto()">Guardar</button>
+  </div>
+</div>
+
+<div class="modal-backdrop" *ngIf="mostrarModalCategorias" (click)="cerrarModalCategorias()"></div>
+<div class="modal modal-sm" *ngIf="mostrarModalCategorias" role="dialog">
+  <div class="modal-header">
+    <h2>Categorías de gasto</h2>
+    <button type="button" class="btn-close" (click)="cerrarModalCategorias()">
+      <app-icon name="x" [size]="20"></app-icon>
+    </button>
+  </div>
+  <div class="modal-body">
+    <div class="nueva-categoria">
+      <input placeholder="Nueva categoría" [(ngModel)]="nuevaCategoriaNombre" (keyup.enter)="agregarCategoriaDesdeModal()" />
+      <button type="button" class="btn primary" (click)="agregarCategoriaDesdeModal()">Agregar</button>
+    </div>
+    <p class="modal-hint">
+      Eliminar una categoría no borra los gastos.<br>
+      Solo la quita de esta lista.
+    </p>
+    <ul class="lista-categorias" *ngIf="categoriasGasto.length; else sinCats">
+      <li *ngFor="let c of categoriasGasto">
+        <span class="nombre">{{ c }}</span>
+        <span class="uso">{{ db.countGastosPorCategoria(c) }} gasto{{ db.countGastosPorCategoria(c) === 1 ? '' : 's' }}</span>
+        <button type="button" class="btn tiny danger" (click)="eliminarCategoriaDesdeModal(c)">
+          <app-icon name="trash" [size]="16" color="#c0392b"></app-icon>
+        </button>
+      </li>
+    </ul>
+    <ng-template #sinCats>
+      <p class="empty">No hay categorías cargadas.</p>
+    </ng-template>
+  </div>
+  <div class="modal-footer">
+    <button type="button" class="btn light" (click)="cerrarModalCategorias()">Cerrar</button>
+  </div>
+</div>

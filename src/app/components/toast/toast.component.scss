@@ -27,8 +27,8 @@
 
 .toast.success { background: #2ecc71; }
 .toast.error { background: #e74c3c; }
-.toast.info { background: #3498db; }
-.toast.warning { background: #f1c40f; color: #2c3e50; }
+.toast.info { background: var(--brand-primary); }
+.toast.warning { background: #f1c40f; color: var(--brand-primary-dark); }
 
 .toast .close {
   background: transparent;
@@ -52,12 +52,12 @@
 }
 .toast .actions .btn.small:hover { filter: brightness(1.05); }
 .toast .actions .btn.small.primary {
-  background: #2c3e50;
-  border-color: #2c3e50;
+  background: var(--brand-primary-dark);
+  border-color: var(--brand-primary-dark);
   color: #fff;
 }
-.toast.warning .actions .btn.small { background: rgba(44,62,80,0.06); color: #2c3e50; border-color: rgba(44,62,80,0.3); }
-.toast.warning .actions .btn.small.primary { background: #2c3e50; color: #fff; border-color: #2c3e50; }
+.toast.warning .actions .btn.small { background: rgba(44,62,80,0.06); color: var(--brand-primary-dark); border-color: rgba(44,62,80,0.3); }
+.toast.warning .actions .btn.small.primary { background: var(--brand-primary-dark); color: #fff; border-color: var(--brand-primary-dark); }
 .toast .actions .btn.small.cancel { background: #e74c3c; border-color: #e74c3c; color: #fff; }
 
 @keyframes fadeInUp {

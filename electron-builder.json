@@ -1,14 +1,19 @@
 {
-  "appId": "com.ferreteriamc.app",
-  "productName": "Ferreteria MC - Sistema de gestion",
+  "appId": "com.laesquina.app",
+  "productName": "Polirubro La Esquina",
   "directories": {
-    "output": "dist-electron"
+    "output": "dist-electron",
+    "buildResources": "assets"
   },
   "files": [
-    "dist/ferreteria-app/browser/**/*",
+    "dist/la-esquina/browser/**/*",
     "electron/**/*",
+    "package.json",
     "!electron/**/*.ts",
     "!**/*.map"
+  ],
+  "asarUnpack": [
+    "**/node_modules/better-sqlite3/**/*"
   ],
   "win": {
     "target": "nsis",
@@ -28,4 +33,4 @@
     "createDesktopShortcut": true,
     "createStartMenuShortcut": true
   }
-} 
+}

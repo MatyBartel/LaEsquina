@@ -1,214 +1,118 @@
-# 🏪 Ferretería MC - Sistema de Control de Stock y Ventas
+# Polirubro La Esquina - Sistema de Control de Stock y Ventas
 
-Aplicación de escritorio desarrollada con **Electron** y **Angular** para la gestión integral de una ferretería.
+Aplicación de escritorio desarrollada con **Electron** y **Angular** para la gestión integral de un almacén polirubro (almacén, granja y kiosco).
 
-## ✨ Características
+## Características
 
-- **Dashboard Inteligente**: Vista general de productos, stock y ventas
-- **Gestión de Productos**: CRUD completo con control de stock
+- **Dashboard**: Vista general de productos, stock y ventas
+- **Gestión de Productos**: Alta uno por uno con categoría, código de barras, costo, margen y tipo de venta (unidad / kilo / litro)
 - **Sistema de Ventas**: Registro de ventas con múltiples productos
 - **Control de Stock**: Alertas automáticas de stock bajo
-- **Reportes**: Análisis de ventas y rendimiento
+- **Gastos**: Registro de gastos por categoría, con filtro por día y navegación por mes/año
 - **Base de Datos Local**: SQLite para almacenamiento persistente
-- **Interfaz Moderna**: Diseño responsive y intuitivo
+- **Funciona sin internet**
 
-## 🚀 Instalación y Configuración
+## Instalación
 
 ### Prerrequisitos
 
-- Node.js (versión 18 o superior)
-- npm o yarn
-- Git
+- Node.js 18+
+- npm
 
-### Pasos de Instalación
+### Pasos
 
-1. **Clonar el repositorio**
-   ```bash
-   git clone <url-del-repositorio>
-   cd ferreteria-app
-   ```
+```bash
+git clone https://github.com/MatyBartel/LaEsquina.git
+cd LaEsquina
+npm install
+npm run postinstall
+```
 
-2. **Instalar dependencias**
-   ```bash
-   npm install
-   ```
+La aplicación usa una **base de datos propia e independiente** de la app de ferretería:
 
-3. **Instalar dependencias de Electron**
-   ```bash
-   npm run postinstall
-   ```
+```
+Documentos/Polirubro La Esquina/datos/polirubro.db
+```
 
-## 🏃‍♂️ Ejecutar la Aplicación
+No lee ni modifica `ferreteria.db`. Al abrir la app por primera vez, la base arranca vacía.
 
-### Modo Desarrollo
+Desde el dashboard podés abrir esa carpeta con el botón de guardar (esquina inferior derecha).
 
-Para ejecutar la aplicación en modo desarrollo con recarga automática:
+## Ejecutar
+
+### Desarrollo (recomendado para modificar)
 
 ```bash
 npm run electron:dev
 ```
 
-Este comando:
-- Inicia el servidor Angular en `http://localhost:4200`
-- Abre la aplicación Electron
-- Permite recarga automática de cambios
-
-### Modo Producción
-
-Para construir y ejecutar la aplicación empaquetada:
+### Producción local (probar el build sin instalador)
 
 ```bash
-# Construir la aplicación
-npm run electron:build
-
-# Ejecutar desde la carpeta dist
+npm run build:clean
 npm run electron
 ```
 
-## 📁 Estructura del Proyecto
+Si ves pantalla en blanco o el cartel "No se encontró la aplicación", el build de Angular no terminó bien. Volvé a correr `npm run build:clean`.
 
-```
-ferreteria-app/
-├── src/                    # Código fuente de Angular
-│   ├── app/
-│   │   ├── components/     # Componentes reutilizables
-│   │   ├── services/       # Servicios y lógica de negocio
-│   │   └── features/       # Módulos de funcionalidad
-├── electron/               # Código de Electron
-│   ├── main.js            # Proceso principal
-│   ├── preload.js         # Script de precarga
-│   └── dev.js             # Configuración de desarrollo
-├── public/                 # Archivos estáticos
-└── dist/                   # Build de producción
-```
-
-## 🛠️ Scripts Disponibles
-
-- `npm start` - Inicia solo Angular
-- `npm run electron` - Ejecuta solo Electron
-- `npm run electron:dev` - Modo desarrollo completo
-- `npm run electron:build` - Construye la aplicación
-- `npm run electron:pack` - Empaqueta sin instalar
-- `npm test` - Ejecuta pruebas unitarias
-
-## 🔧 Configuración de Electron
-
-### Archivo Principal (`electron/main.js`)
-- Configuración de la ventana principal
-- Menú personalizado con atajos de teclado
-- Manejo de eventos de la aplicación
-
-### Preload (`electron/preload.js`)
-- API segura para comunicación entre procesos
-- Exposición de funcionalidades de Electron
-- Manejo de notificaciones del sistema
-
-## 📊 Base de Datos
-
-La aplicación utiliza **SQLite** para almacenamiento local:
-
-- **Productos**: Información completa de inventario
-- **Ventas**: Registro de transacciones
-- **Stock**: Control automático de inventario
-- **Reportes**: Datos agregados para análisis
-
-## 🎨 Interfaz de Usuario
-
-### Dashboard Principal
-- Estadísticas en tiempo real
-- Productos con stock bajo
-- Últimas ventas
-- Acciones rápidas
-
-### Navegación
-- Menú superior responsive
-- Rutas organizadas por funcionalidad
-- Breadcrumbs para navegación
-
-## 🚨 Alertas y Notificaciones
-
-- **Stock Bajo**: Alertas automáticas cuando el stock está por debajo del mínimo
-- **Notificaciones del Sistema**: Integración con notificaciones nativas
-- **Validaciones**: Verificación de datos en formularios
-
-## 📱 Responsive Design
-
-La aplicación se adapta a diferentes tamaños de pantalla:
-- **Desktop**: Vista completa con todas las funcionalidades
-- **Tablet**: Layout adaptado para pantallas medianas
-- **Mobile**: Navegación optimizada para pantallas pequeñas
-
-## 🔒 Seguridad
-
-- **Context Isolation**: Separación segura entre procesos
-- **Node Integration**: Deshabilitada por defecto
-- **Preload Scripts**: Comunicación controlada con Electron
-
-## 🧪 Pruebas
+### Instalador Windows
 
 ```bash
-# Ejecutar pruebas unitarias
-npm test
-
-# Ejecutar pruebas con coverage
-npm run test:coverage
+npm run electron:build
 ```
 
-## 📦 Empaquetado
+El `.exe` queda en `dist-electron/`.
 
-### Windows
+## Build confiable (si falla o queda desactualizado)
+
+Corré estos pasos en orden, en PowerShell o CMD dentro de la carpeta del proyecto:
+
 ```bash
-npm run electron:build -- --win
-```
-
-### macOS
-```bash
-npm run electron:build -- --mac
-```
-
-### Linux
-```bash
-npm run electron:build -- --linux
-```
-
-## 🐛 Solución de Problemas
-
-### Error: "Electron not found"
-```bash
-npm run postinstall
-```
-
-### Error: "Port 4200 already in use"
-```bash
-# Terminar procesos en el puerto 4200
-npx kill-port 4200
-```
-
-### Error: "Module not found"
-```bash
-# Limpiar cache e instalar de nuevo
-rm -rf node_modules package-lock.json
+npm run clean
 npm install
+npm run rebuild:native
+npm run build:clean
+npm run electron
 ```
 
-## 📝 Licencia
+Para generar el instalador:
 
-Este proyecto está bajo la Licencia MIT.
+```bash
+npm run electron:build
+```
 
-## 🤝 Contribución
+### Errores frecuentes
 
-1. Fork el proyecto
-2. Crea una rama para tu feature (`git checkout -b feature/AmazingFeature`)
-3. Commit tus cambios (`git commit -m 'Add some AmazingFeature'`)
-4. Push a la rama (`git push origin feature/AmazingFeature`)
-5. Abre un Pull Request
+| Problema | Solución |
+|----------|----------|
+| Pantalla blanca al abrir Electron | `npm run build:clean` y después `npm run electron` |
+| Cambios de Angular no se ven | No uses solo `electron`; hace falta `build` antes |
+| Error con `better-sqlite3` | `npm run rebuild:native` |
+| Build raro / archivos viejos | `npm run clean` y volver a buildear |
+| Solo querés probar en el navegador | `npm run start` → http://localhost:4200 |
 
-## 📞 Soporte
+**Importante:** `electron:dev` usa el servidor en vivo (`localhost:4200`). `npm run electron` usa los archivos compilados en `dist/la-esquina/browser/`. Son dos modos distintos.
 
-Para soporte técnico o consultas:
-- Crear un issue en el repositorio
-- Contactar al equipo de desarrollo
+## Scripts
 
----
+- `npm run electron:dev` - Desarrollo con recarga
+- `npm run build:clean` - Limpia y compila Angular (producción)
+- `npm run electron` - Abre la app con el build compilado
+- `npm run electron:build` - Limpia, compila y genera instalador Windows
+- `npm run electron:pack` - Igual que build pero sin instalador (carpeta descomprimida)
+- `npm run clean` - Borra `dist`, `dist-electron` y caché de Angular
+- `npm run rebuild:native` - Recompila módulos nativos (SQLite) para Electron
 
-**Desarrollado con ❤️ para Ferretería MC**
+## Estructura
+
+```
+LaEsquina/
+├── src/app/          # Angular (componentes, servicios)
+├── electron/         # Proceso principal Electron
+├── public/logos/     # Logos e iconos de La Esquina
+└── assets/           # Icono de la app (.ico)
+```
+
+## Licencia
+
+MIT

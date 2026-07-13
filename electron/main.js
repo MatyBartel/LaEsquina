@@ -5,13 +5,37 @@ const Database = require("better-sqlite3");
 
 const isDev = process.env.NODE_ENV === "development";
 
+const DATA_DIR_NAME = "Polirubro La Esquina";
+const DB_FILE_NAME = "polirubro.db";
+
 let mainWindow;
 let db;
+let dbPath;
 
-const dbPath = path.join(app.getPath("userData"), "ferreteria.db");
+function resolveDataDir() {
+  const dataDir = path.join(app.getPath("documents"), DATA_DIR_NAME, "datos");
+  fs.mkdirSync(dataDir, { recursive: true });
+  return dataDir;
+}
+
+function resolveDbPath() {
+  return path.join(resolveDataDir(), DB_FILE_NAME);
+}
+
+function resolveIndexHtml() {
+  const candidates = [
+    path.join(__dirname, "../dist/la-esquina/browser/index.html"),
+    path.join(__dirname, "../dist/ferreteria-app/browser/index.html"),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
 
 function initDatabase() {
   try {
+    dbPath = resolveDbPath();
     db = new Database(dbPath);
 
     db.prepare(`
@@ -51,13 +75,14 @@ function createWindow() {
     width: 1200,
     height: 800,
     autoHideMenuBar: true,
+    backgroundColor: '#4A8798',
     webPreferences: {
       nodeIntegration: false,
       contextIsolation: true,
       preload: path.join(__dirname, "preload.js"),
     },
     icon: path.join(__dirname, "../assets/icon.ico"),
-    title: "Ferreteria MC - Sistema de gestion",
+    title: "Polirubro La Esquina",
   });
 
   if (mainWindow.setMenuBarVisibility) {
@@ -72,9 +97,16 @@ function createWindow() {
     mainWindow.loadURL("http://localhost:4200");
     mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(
-      path.join(__dirname, "../dist/ferreteria-app/browser/index.html")
-    );
+    const indexHtml = resolveIndexHtml();
+    if (!indexHtml) {
+      dialog.showErrorBox(
+        "No se encontró la aplicación",
+        "Ejecutá primero: npm run build\n\nLuego: npm run electron\n\nO usá modo desarrollo: npm run electron:dev"
+      );
+      app.quit();
+      return;
+    }
+    mainWindow.loadFile(indexHtml);
   }
 
   // Aplicar zoom tipo Ctrl+- con factor dinámico según resolución
@@ -419,7 +451,7 @@ ipcMain.handle('escpos:print-ticket', async (_event, payload) => {
     const printer = new escpos.Printer(device, { encoding: 'CP858' });
 
     const {
-      negocio = { nombre: 'Ferretería "El Tano"', dir1: 'Batalla de Ituzaingó 2739', dir2: '1888, Fcio. Varela' },
+      negocio = { nombre: 'Polirubro La Esquina' },
       fecha = '',
       numero = '',
       vendedor = '',
@@ -454,8 +486,8 @@ ipcMain.handle('escpos:print-ticket', async (_event, payload) => {
             .size(0,0)
             .text(negocio.nombre)
             .style('normal')
-            .text(negocio.dir1)
-            .text(negocio.dir2)
+            // .text(negocio.dir1)
+            // .text(negocio.dir2)
             .text(vendedor ? (`Vendedor: ${vendedor}`) : '')
             .text(fecha || '')
             .text(numero ? `Ticket: ${numero}` : '');
@@ -870,10 +902,11 @@ ipcMain.handle('escpos:open-drawer', async () => {
 // Abrir carpeta de datos de la app o resaltar el archivo de base de datos
 ipcMain.handle("open-data-folder", async () => {
   try {
-    if (fs.existsSync(dbPath)) {
+    const dataDir = resolveDataDir();
+    if (dbPath && fs.existsSync(dbPath)) {
       shell.showItemInFolder(dbPath);
     } else {
-      await shell.openPath(app.getPath("userData"));
+      await shell.openPath(dataDir);
     }
     return { ok: true };
   } catch (e) {

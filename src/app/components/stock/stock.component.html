@@ -25,9 +25,9 @@
         <img src="logos/increase.png" alt="Aumentos" />
         Aumentos
       </button>
-      <button class="btn-primary large" (click)="abrirCargaExcel()">
-        <img src="logos/xls.png" alt="Cargar productos" />
-        Cargar productos
+      <button type="button" class="btn-primary large btn-agregar" (click)="abrirAgregarProducto()">
+        <img src="logos/add.png" alt="" aria-hidden="true" />
+        Agregar producto
       </button>
       <button class="btn-primary large" *ngIf="seleccionados.size" (click)="eliminarSeleccionados()">
         <img src="logos/delete.png" alt="Eliminar seleccionados" />
@@ -47,6 +47,7 @@
           <th (click)="setOrden('precio')">Precio venta</th>
           <th>Precio costo</th>
           <th>% Ganancia</th>
+          <th>Tipo</th>
           <th (click)="setOrden('stock')">Stock</th>
           <th class="acciones">Acciones</th>
         </tr>
@@ -63,19 +64,28 @@
           <td>{{ p.precio | currency:'ARS':'symbol-narrow':'1.2-2' }}</td>
           <td>{{ getCosto(p) | currency:'ARS':'symbol-narrow':'1.2-2' }}</td>
           <td>{{ getGananciaPct(p) | number:'1.0-2' }}%</td>
+          <td>{{ etiquetaTipoVenta(p.tipoVenta) }}</td>
           <td>
-            <input type="number" min="0" [ngModel]="p.stock" (ngModelChange)="onStockChange(p, $event)" (blur)="onStockBlur(p)" style="width:80px;text-align:right" />
+            <input
+              type="number"
+              min="0"
+              [step]="esFraccionable(p) ? '0.001' : '1'"
+              [ngModel]="p.stock"
+              (ngModelChange)="onStockChange(p, $event)"
+              (blur)="onStockBlur(p)"
+              style="width:90px;text-align:right"
+            />
           </td>
           <td class="row-actions">
             <button class="btn-light" (click)="verInfo(p)" title="Ver info">
-              <app-icon name="info" [size]="22" color="#2c3e50"></app-icon>
+              <app-icon name="info" [size]="22" color="#357A8F"></app-icon>
             </button>
-            <a class="btn-secondary" [routerLink]="['/stock/editar', p.id]">Editar</a>
+            <button type="button" class="btn-secondary" (click)="abrirEditarProducto(p.id!)">Editar</button>
             <button class="btn-danger" (click)="solicitarEliminar(p)">Eliminar</button>
           </td>
         </tr>
         <tr *ngIf="!productosVista.length">
-          <td colspan="8" class="muted">No hay productos para mostrar.</td>
+          <td colspan="10" class="muted">No hay productos. Usá "Agregar producto" para cargar el primero.</td>
         </tr>
       </tbody>
     </table>
@@ -135,24 +145,20 @@
     </div>
     <div class="modal-body">
       <div class="row"><strong>Código:</strong> {{ productoDetalle!.codigo }}</div>
+      <div class="row" *ngIf="productoDetalle!.codigoBarras"><strong>Código de barras:</strong> {{ productoDetalle!.codigoBarras }}</div>
       <div class="row"><strong>Nombre:</strong> {{ productoDetalle!.nombre }}</div>
       <div class="row"><strong>Categoría:</strong> {{ productoDetalle!.categoria }}</div>
-      <div class="row"><strong>Precio:</strong> {{ productoDetalle!.precio | currency:'ARS':'symbol-narrow':'1.2-2' }}</div>
-      <div class="row"><strong>Stock:</strong> {{ productoDetalle!.stock }} (mín: {{ productoDetalle!.stockMinimo }})</div>
+      <div class="row"><strong>Tipo de venta:</strong> {{ etiquetaTipoVenta(productoDetalle!.tipoVenta) }}</div>
+      <div class="row"><strong>Precio costo:</strong> {{ productoDetalle!.precioCosto | currency:'ARS':'symbol-narrow':'1.2-2' }}</div>
+      <div class="row"><strong>% Ganancia:</strong> {{ productoDetalle!.porcentajeGanancia | number:'1.0-2' }}%</div>
+      <div class="row"><strong>Precio venta:</strong> {{ productoDetalle!.precio | currency:'ARS':'symbol-narrow':'1.2-2' }}</div>
+      <div class="row"><strong>Stock:</strong> {{ etiquetaStock(productoDetalle!) }} (mín: {{ productoDetalle!.stockMinimo }})</div>
       <div class="row"><strong>Proveedor:</strong> {{ productoDetalle!.proveedor || '-' }}</div>
       <div class="row"><strong>Descripción:</strong> {{ productoDetalle!.descripcion || '-' }}</div>
       <div class="row"><strong>Creado:</strong> {{ productoDetalle!.fechaCreacion | date:'short' }}</div>
-      <div class="row" *ngIf="productoDetalle?.caracteristicas && (productoDetalle?.caracteristicas | keyvalue)?.length">
-        <strong>Características:</strong>
-        <ul>
-          <li *ngFor="let kv of (productoDetalle?.caracteristicas | keyvalue)">
-            {{ kv.key }}: {{ kv.value }}
-          </li>
-        </ul>
-      </div>
     </div>
     <div class="modal-actions">
-      <button class="btn-secondary" [routerLink]="['/stock/editar', productoDetalle.id]" (click)="cerrarInfo()">Editar</button>
+      <button type="button" class="btn-secondary" (click)="abrirEditarProducto(productoDetalle!.id!); cerrarInfo()">Editar</button>
     </div>
   </div>
 
@@ -175,42 +181,14 @@
       <button class="btn-danger" (click)="confirmarEliminar()">Eliminar</button>
     </div>
   </div>
-
-  <div class="modal-backdrop" *ngIf="mostrarCargaExcel" (click)="cancelarCargaExcel()"></div>
-  <div class="modal" *ngIf="mostrarCargaExcel">
-    <div class="modal-header">
-      <h3>Cargar productos desde Excel</h3>
-      <button class="close" (click)="cancelarCargaExcel()">×</button>
-    </div>
-    <div class="modal-body">
-      <div class="confirm-form">
-        <div class="row">
-          <label>Archivo Excel (*.xlsx)</label>
-          <input type="file" accept=".xlsx,.xls" (change)="onArchivoExcelSeleccionado($event)" />
-        </div>
-        <div class="row checkbox">
-          <label style="display:flex; gap:8px; align-items:center;">
-            <input type="checkbox" [(ngModel)]="eliminarNoPresentes" />
-            Eliminar del sistema los productos que NO estén en el Excel
-          </label>
-        </div>
-        <div class="row">
-          <div class="help">Formato esperado de columnas: CODIGO, NOMBRE, CATEGORIA, PRECIO DE COSTO, PORCENTAJE GANANCIA, PROVEEDOR, DESCRIPCION (opcional). El precio final se calcula como costo × (1 + porcentaje/100). El stock se cargará en 0.</div>
-        </div>
-        <div class="row" *ngIf="resumenCarga">
-          <div>{{ resumenCarga }}</div>
-        </div>
-        <div class="row" *ngIf="resumenValidaciones">
-          <div class="help">{{ resumenValidaciones }}</div>
-        </div>
-      </div>
-    </div>
-    <div class="modal-actions">
-      <button class="btn-cancel" (click)="cancelarCargaExcel()">Cancelar</button>
-      <button class="btn-primary" [disabled]="!archivoExcel" (click)="procesarExcel()">Procesar</button>
-    </div>
-  </div>
 </div>
+
+<app-producto-form
+  *ngIf="mostrarFormProducto"
+  [productoId]="productoFormId"
+  (cerrar)="cerrarFormProducto()"
+  (guardado)="cerrarFormProducto()"
+></app-producto-form>
 
 <div class="loader-backdrop" *ngIf="loading.visible">
   <div class="loader-card">
@@ -228,23 +206,7 @@
     </div>
     <div class="loader-body" *ngIf="loading.done">
       <div class="summary">
-        <div class="row" *ngIf="loading.summary?.nuevos !== undefined">Nuevos: <b>{{ loading.summary.nuevos }}</b></div>
-        <div class="row" *ngIf="loading.summary?.actualizados !== undefined">Actualizados: <b>{{ loading.summary.actualizados }}</b></div>
         <div class="row" *ngIf="loading.summary?.modificados !== undefined">Modificados: <b>{{ loading.summary.modificados }}</b></div>
-        <div class="row" *ngIf="loading.summary?.duplicados?.length">
-          Duplicados ({{ loading.summary.duplicados.length }}):
-          <div class="list">{{ loading.summary.duplicados.join(', ') }}</div>
-        </div>
-        <div class="row" *ngIf="loading.summary?.sinPrecio?.length">
-          Sin datos completos: ({{ loading.summary.sinPrecio.length }}):
-          <div class="list">{{ loading.summary.sinPrecio.join(', ') }}</div>
-        </div>
-        <div class="row" *ngIf="loading.summary?.sinCodigoCount">
-          Sin código: <b>{{ loading.summary.sinCodigoCount }}</b>
-        </div>
-        <div class="row" *ngIf="loading.summary?.eliminados">
-          Eliminados: <b>{{ loading.summary.eliminados }}</b>
-        </div>
       </div>
       <div class="actions">
         <button class="btn-primary" (click)="cerrarLoading()">Cerrar</button>

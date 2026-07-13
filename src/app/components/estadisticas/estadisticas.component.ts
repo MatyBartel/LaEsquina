@@ -249,7 +249,7 @@ export class EstadisticasComponent implements OnInit, AfterViewInit, OnDestroy {
               ]
             }
           },
-          lineStyle: { width: 3, color: '#3498db' },
+          lineStyle: { width: 3, color: '#4A9AAD' },
           data: valores
         }
       ]

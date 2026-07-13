@@ -1,3 +1,30 @@
+:root {
+  --brand-primary: #6BBDD0;
+  --brand-primary-dark: #3D8FA3;
+  --brand-bg: #4A8798;
+  --brand-bg-gradient: linear-gradient(160deg, #3A7285 0%, #4A8798 48%, #5BA3B5 100%);
+  --brand-gold: #D4B06A;
+  --brand-cream: #C5DDE6;
+  --brand-text: #2A3F48;
+  --brand-white: #FFFFFF;
+
+  --surface: rgba(255, 255, 255, 0.96);
+  --surface-solid: #FFFFFF;
+  --surface-muted: #F5F8FA;
+  --surface-border: #DCE6ED;
+  --surface-shadow: 0 12px 32px rgba(20, 50, 60, 0.15);
+  --heading-color: #FFFFFF;
+  --text-muted: #C8E2EC;
+}
+
+html,
+body,
+app-root {
+  min-height: 100%;
+  background: var(--brand-bg) !important;
+  background-image: var(--brand-bg-gradient) !important;
+}
+
 /* Escala responsiva para 1366x768: reduce padding, fuentes y grillas en pantallas bajas */
 @media (max-width: 1366px), (max-height: 820px) {
   html, body { font-size: 14px; }
@@ -18,8 +45,8 @@
 
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  background-color: #f8f9fa;
-  color: #2c3e50;
+  background: var(--brand-bg-gradient);
+  color: var(--brand-text);
   line-height: 1.6;
   overflow-x: hidden;
   overflow-y: hidden;
@@ -31,6 +58,21 @@ html {
   overflow-y: hidden;
   width: 100%;
   height: 100%;
+}
+
+.page-title,
+h1 {
+  color: var(--heading-color);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.ui-card {
+  background: var(--surface);
+  backdrop-filter: blur(10px);
+  border: 1px solid var(--surface-border);
+  border-radius: 14px;
+  box-shadow: var(--surface-shadow);
 }
 
 .emoji {

@@ -11,7 +11,7 @@ import { ToastComponent } from './components/toast/toast.component';
   styleUrls: ['./app.component.scss']
 })
 export class AppComponent {
-  title = 'Ferretería MC';
+  title = 'Polirubro La Esquina';
   isSidebarOpen = false;
 
   toggleSidebar(): void {

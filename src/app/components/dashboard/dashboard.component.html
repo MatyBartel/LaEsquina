@@ -1,7 +1,8 @@
 <div class="dashboard-container">
   <header class="dashboard-header">
-    <h1>Ferretería MC - Panel de Control</h1>
-    <p class="subtitle">Sistema de Gestión de Stock y Ventas</p>
+    <img src="logos/la-esquina-banner.png" alt="Polirubro La Esquina" class="dashboard-logo" />
+    <h1>Panel de Control</h1>
+    <p class="subtitle">Almacén, granja y kiosco</p>
   </header>
 
   <div class="stats-grid">
@@ -30,10 +31,10 @@
     </div>
 
     <div class="stat-card">
-      <div class="stat-icon"><img src="logos/estadisticas.png" alt="Total Ventas" /></div>
+      <div class="stat-icon"><img src="logos/gastos.png" alt="Total Gastado" /></div>
       <div class="stat-content">
-        <h3>{{ totalVentas }}</h3>
-        <p>{{ tituloTotalVentasCard }}</p>
+        <h3>${{ totalGastadoHoy | number:'1.2-2' }}</h3>
+        <p>{{ tituloGastadoCard }}</p>
       </div>
     </div>
   </div>
@@ -61,7 +62,7 @@
             </div>
           </div>
           <div class="pc-actions">
-            <a class="btn-mini primary" [routerLink]="['/stock/editar', producto.id]">+ Stock</a>
+            <a class="btn-mini primary" [routerLink]="['/stock']" [queryParams]="{ editar: producto.id }">+ Stock</a>
           </div>
         </div>
         <div *ngIf="productosBajoStockList.length === 0" class="no-items">
@@ -102,6 +103,6 @@
     </div>
   </div>
 </div> 
-<button class="fab-backup" (click)="abrirCarpetaDatos()" title="Abrir carpeta de datos">
+<button class="fab-backup" (click)="abrirCarpetaDatos()" title="Abrir carpeta de datos (Documentos/Polirubro La Esquina/datos/polirubro.db)">
   <img src="logos/guardar.png" alt="Abrir carpeta de datos" width="28" height="28" />
 </button>

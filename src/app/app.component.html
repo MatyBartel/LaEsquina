@@ -15,7 +15,10 @@
   
   <aside class="sidebar" [class.open]="isSidebarOpen">
     <div class="sidebar-header">
-       <h2>Ferretería MC</h2>
+      <div class="brand">
+        <img src="logos/la-esquina-banner.png" alt="Polirubro La Esquina" class="brand-logo" />
+        <p class="brand-subtitle">Almacén, granja y kiosco</p>
+      </div>
       <button class="close-btn" (click)="closeSidebar()">×</button>
     </div>
     
@@ -53,12 +56,12 @@
         Estadísticas
       </a>
       
-      <a routerLink="/proveedores" 
+      <a routerLink="/gastos" 
          routerLinkActive="active" 
          (click)="closeSidebar()"
          class="nav-item">
-        <span class="nav-icon"><img src="logos/pedidos.png" alt="Proveedores" width="32" height="32" /></span>
-        Proveedores
+        <span class="nav-icon"><img src="logos/gastosmenu.png" alt="Gastos" width="32" height="32" /></span>
+        Gastos
       </a>
     </nav>
   </aside>

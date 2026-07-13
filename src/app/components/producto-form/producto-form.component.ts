@@ -1,199 +1,337 @@
-import { Component, OnDestroy, OnInit, inject } from '@angular/core';
+import { Component, EventEmitter, Input, OnChanges, OnDestroy, OnInit, Output, SimpleChanges, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
-import { ActivatedRoute, Router } from '@angular/router';
-import { DatabaseService, Producto } from '../../services/database.service';
+import { DatabaseService, Producto, TipoVenta } from '../../services/database.service';
 import { ToastService } from '../../services/toast.service';
+import { IconComponent } from '../icon/icon.component';
 import { Subscription } from 'rxjs';
 
 @Component({
   selector: 'app-producto-form',
   standalone: true,
-  imports: [CommonModule, FormsModule],
+  imports: [CommonModule, FormsModule, IconComponent],
   templateUrl: './producto-form.component.html',
   styleUrls: ['./producto-form.component.scss']
 })
-export class ProductoFormComponent implements OnInit, OnDestroy {
-  private db = inject(DatabaseService);
-  private router = inject(Router);
-  private route = inject(ActivatedRoute);
+export class ProductoFormComponent implements OnInit, OnChanges, OnDestroy {
+  @Input() productoId: number | null = null;
+  @Output() cerrar = new EventEmitter<void>();
+  @Output() guardado = new EventEmitter<void>();
+
+  db = inject(DatabaseService);
   private toast = inject(ToastService);
 
+  readonly tiposVenta: { value: TipoVenta; label: string }[] = [
+    { value: 'unidad', label: 'Por unidad' },
+    { value: 'kg', label: 'Por kilo' },
+    { value: 'litro', label: 'Por litro' },
+  ];
+
   categorias: string[] = [];
+  proveedoresLista: string[] = [];
   nuevaCategoriaNombre = '';
+  nuevoProveedorNombre = '';
+  mostrarModalCategorias = false;
+  mostrarModalProveedores = false;
 
   codigo = '';
+  codigoBarras = '';
   nombre = '';
   categoria = '';
+  precioCosto: number | null = null;
+  porcentajeGanancia: number | null = 30;
   precio: number | null = null;
+  tipoVenta: TipoVenta = 'unidad';
   descripcion = '';
   stock: number | null = null;
   stockMinimo: number | null = 0;
   proveedor = '';
 
-  caracteristicas: Array<{ clave: string; valor: string }> = [];
-  private productosSub?: Subscription;
-  private datosCargados = false;
-
-  categoriaDropdownAbierto = false;
-  mostrarNuevaCategoria = false;
-
-  editId: number | null = null;
+  private categoriasSub?: Subscription;
+  private proveedoresSub?: Subscription;
+  private recalculando = false;
 
   constructor() {
-    this.db.getCategorias().subscribe(cats => {
+    this.categoriasSub = this.db.getCategorias().subscribe(cats => {
       this.categorias = cats;
+    });
+    this.proveedoresSub = this.db.getProveedoresLista().subscribe(provs => {
+      this.proveedoresLista = provs;
     });
   }
 
   ngOnInit(): void {
-    this.establecerIdDesdeRuta(this.route.snapshot.paramMap.get('id'));
+    this.inicializarFormulario();
+  }
 
-    this.route.paramMap.subscribe(pm => {
-      this.establecerIdDesdeRuta(pm.get('id'));
-      if (this.editId) {
-        this.intentarCargarProducto(this.editId);
-      }
-    });
-
-    if (this.editId) {
-      this.intentarCargarProducto(this.editId);
+  ngOnChanges(changes: SimpleChanges): void {
+    if (changes['productoId']) {
+      this.inicializarFormulario();
     }
-
-    this.productosSub = this.db.getProductos().subscribe(() => {
-      if (this.editId && !this.datosCargados) {
-        this.intentarCargarProducto(this.editId);
-      }
-    });
   }
 
   ngOnDestroy(): void {
-    this.productosSub?.unsubscribe();
+    this.categoriasSub?.unsubscribe();
+    this.proveedoresSub?.unsubscribe();
   }
 
-  private intentarCargarProducto(id: number): void {
-    const p = this.db.getProductoById(id);
-    if (!p) {
-      this.toast.show('Producto no encontrado', 'warning');
-      this.router.navigate(['/stock']);
+  get categoriasParaSelect(): string[] {
+    const actual = (this.categoria || '').trim();
+    if (!actual) return this.categorias;
+    const existe = this.categorias.some(c => c.toLowerCase() === actual.toLowerCase());
+    return existe ? this.categorias : [actual, ...this.categorias];
+  }
+
+  get proveedoresParaSelect(): string[] {
+    const actual = (this.proveedor || '').trim();
+    if (!actual) return this.proveedoresLista;
+    const existe = this.proveedoresLista.some(p => p.toLowerCase() === actual.toLowerCase());
+    return existe ? this.proveedoresLista : [actual, ...this.proveedoresLista];
+  }
+
+  get tituloFormulario(): string {
+    return this.productoId ? 'Editar producto' : 'Agregar producto';
+  }
+
+  get etiquetaPrecio(): string {
+    if (this.tipoVenta === 'kg') return 'Precio de venta ($/kg)*';
+    if (this.tipoVenta === 'litro') return 'Precio de venta ($/litro)*';
+    return 'Precio de venta*';
+  }
+
+  get etiquetaStock(): string {
+    if (this.tipoVenta === 'kg') return 'Stock inicial (kg)';
+    if (this.tipoVenta === 'litro') return 'Stock inicial (litros)';
+    return 'Stock inicial';
+  }
+
+  get stockStep(): string {
+    return this.tipoVenta === 'unidad' ? '1' : '0.001';
+  }
+
+  private inicializarFormulario(): void {
+    this.mostrarModalCategorias = false;
+    this.mostrarModalProveedores = false;
+    if (this.productoId) {
+      const p = this.db.getProductoById(this.productoId);
+      if (!p) {
+        this.toast.show('Producto no encontrado', 'warning');
+        this.cancelar();
+        return;
+      }
+      this.codigo = p.codigo;
+      this.codigoBarras = p.codigoBarras || '';
+      this.nombre = p.nombre;
+      this.categoria = p.categoria;
+      this.precioCosto = p.precioCosto;
+      this.porcentajeGanancia = p.porcentajeGanancia;
+      this.precio = p.precio;
+      this.tipoVenta = p.tipoVenta || 'unidad';
+      this.descripcion = p.descripcion;
+      this.stock = p.stock;
+      this.stockMinimo = p.stockMinimo;
+      this.proveedor = p.proveedor;
       return;
     }
-    this.datosCargados = true;
-    this.codigo = p.codigo;
-    this.nombre = p.nombre;
-    this.categoria = p.categoria;
-    this.precio = p.precio;
-    this.descripcion = p.descripcion;
-    this.stock = p.stock;
-    this.stockMinimo = p.stockMinimo;
-    this.proveedor = p.proveedor;
-    if (p.caracteristicas) {
-      this.caracteristicas = Object.entries(p.caracteristicas).map(([clave, valor]) => ({ clave, valor }));
-    } else {
-      this.caracteristicas = [];
-    }
+
+    this.resetNuevo();
   }
 
-  private establecerIdDesdeRuta(idParam: string | null): void {
-    const parsed = idParam ? Number(idParam) : null;
-    this.editId = parsed && !Number.isNaN(parsed) ? parsed : null;
+  private resetNuevo(): void {
+    this.codigo = '';
+    this.codigoBarras = '';
+    this.nombre = '';
+    this.categoria = '';
+    this.precioCosto = null;
+    this.porcentajeGanancia = 30;
+    this.precio = null;
+    this.tipoVenta = 'unidad';
+    this.descripcion = '';
+    this.stock = null;
+    this.stockMinimo = 0;
+    this.proveedor = '';
   }
 
-  agregarCaracteristica(): void {
-    this.caracteristicas.push({ clave: '', valor: '' });
+  onCostoChange(): void {
+    if (this.recalculando) return;
+    this.recalcularPrecioVenta();
   }
 
-  eliminarCaracteristica(index: number): void {
-    this.caracteristicas.splice(index, 1);
+  onPorcentajeChange(): void {
+    if (this.recalculando) return;
+    this.recalcularPrecioVenta();
   }
 
-  agregarCategoria(): void {
+  onPrecioChange(): void {
+    if (this.recalculando) return;
+    this.recalcularPorcentaje();
+  }
+
+  private recalcularPrecioVenta(): void {
+    if (this.precioCosto == null || this.porcentajeGanancia == null) return;
+    this.recalculando = true;
+    this.precio = this.db.calcularPrecioVenta(this.precioCosto, this.porcentajeGanancia);
+    this.recalculando = false;
+  }
+
+  private recalcularPorcentaje(): void {
+    if (this.precioCosto == null || this.precio == null || this.precioCosto <= 0) return;
+    this.recalculando = true;
+    this.porcentajeGanancia = Number((((this.precio / this.precioCosto) - 1) * 100).toFixed(2));
+    this.recalculando = false;
+  }
+
+  abrirModalCategorias(): void {
+    this.nuevaCategoriaNombre = '';
+    this.mostrarModalCategorias = true;
+    setTimeout(() => document.getElementById('inputNuevaCategoriaModal')?.focus(), 0);
+  }
+
+  cerrarModalCategorias(): void {
+    this.mostrarModalCategorias = false;
+    this.nuevaCategoriaNombre = '';
+  }
+
+  agregarCategoriaDesdeModal(): void {
     const nombre = (this.nuevaCategoriaNombre || '').trim();
-    if (!nombre) return;
+    if (!nombre) {
+      this.toast.show('Escribí un nombre para la categoría.', 'warning');
+      return;
+    }
+    const yaExiste = this.categorias.some(c => c.toLowerCase() === nombre.toLowerCase());
+    if (yaExiste) {
+      this.toast.show('Esa categoría ya existe.', 'warning');
+      return;
+    }
     this.db.agregarCategoria(nombre);
     this.categoria = nombre;
     this.nuevaCategoriaNombre = '';
-    this.mostrarNuevaCategoria = false;
-    this.categoriaDropdownAbierto = false;
+    this.toast.show('Categoría agregada', 'success');
   }
 
-  eliminarCategoriaSeleccionada(): void {
-    const nombre = (this.categoria || '').trim();
-    if (!nombre) return;
-    const ok = this.db.eliminarCategoria(nombre);
-    if (!ok) {
-      this.toast.show('No se puede eliminar: hay productos con esta categoría', 'warning');
-      return;
-    }
-    this.toast.show('Categoría eliminada', 'info');
-    if (this.categoria === nombre) {
-      this.categoria = '';
-    }
-  }
-
-  eliminarCategoria(nombre: string): void {
+  async eliminarCategoriaDesdeModal(nombre: string): Promise<void> {
     const n = (nombre || '').trim();
     if (!n) return;
-    const ok = this.db.eliminarCategoria(n);
-    if (!ok) {
-      this.toast.show('No se puede eliminar: está en uso', 'warning');
+
+    const cantidad = this.db.countProductosPorCategoria(n);
+    const mensaje = cantidad > 0
+      ? `¿Eliminar la categoría "${n}"?\n\nHay ${cantidad} producto(s) con esta categoría. No se borrarán: solo se quita de la lista.`
+      : `¿Eliminar la categoría "${n}"?`;
+
+    const ok = await this.toast.confirm(mensaje, 'warning');
+    if (!ok) return;
+
+    const eliminada = this.db.eliminarCategoria(n);
+    if (!eliminada) {
+      this.toast.show('No se pudo eliminar la categoría.', 'error');
       return;
     }
-    this.toast.show('Categoría eliminada', 'info');
-    if (this.categoria === n) {
+
+    if (this.categoria.toLowerCase() === n.toLowerCase()) {
       this.categoria = '';
     }
+    this.toast.show('Categoría eliminada de la lista', 'info');
   }
 
-  seleccionarCategoria(nombre: string): void {
-    this.categoria = nombre;
-    this.categoriaDropdownAbierto = false;
+  abrirModalProveedores(): void {
+    this.nuevoProveedorNombre = '';
+    this.mostrarModalProveedores = true;
+    setTimeout(() => document.getElementById('inputNuevoProveedorModal')?.focus(), 0);
   }
 
-  toggleDropdownCategorias(): void {
-    this.categoriaDropdownAbierto = !this.categoriaDropdownAbierto;
+  cerrarModalProveedores(): void {
+    this.mostrarModalProveedores = false;
+    this.nuevoProveedorNombre = '';
   }
 
-  toggleNuevaCategoria(): void {
-    this.mostrarNuevaCategoria = !this.mostrarNuevaCategoria;
-    if (this.mostrarNuevaCategoria) {
-      setTimeout(() => {
-        const el = document.getElementById('inputNuevaCategoria');
-        el?.focus();
-      }, 0);
+  agregarProveedorDesdeModal(): void {
+    const nombre = (this.nuevoProveedorNombre || '').trim();
+    if (!nombre) {
+      this.toast.show('Escribí un nombre para el proveedor.', 'warning');
+      return;
     }
+    const yaExiste = this.proveedoresLista.some(p => p.toLowerCase() === nombre.toLowerCase());
+    if (yaExiste) {
+      this.toast.show('Ese proveedor ya existe.', 'warning');
+      return;
+    }
+    this.db.agregarProveedorLista(nombre);
+    this.proveedor = nombre;
+    this.nuevoProveedorNombre = '';
+    this.toast.show('Proveedor agregado', 'success');
+  }
+
+  async eliminarProveedorDesdeModal(nombre: string): Promise<void> {
+    const n = (nombre || '').trim();
+    if (!n) return;
+
+    const cantidad = this.db.countProductosPorProveedor(n);
+    const mensaje = cantidad > 0
+      ? `¿Eliminar el proveedor "${n}"?\n\nHay ${cantidad} producto(s) con este proveedor. No se borrarán: solo se quita de la lista.`
+      : `¿Eliminar el proveedor "${n}"?`;
+
+    const ok = await this.toast.confirm(mensaje, 'warning');
+    if (!ok) return;
+
+    const eliminado = this.db.eliminarProveedorLista(n);
+    if (!eliminado) {
+      this.toast.show('No se pudo eliminar el proveedor.', 'error');
+      return;
+    }
+
+    if (this.proveedor.toLowerCase() === n.toLowerCase()) {
+      this.proveedor = '';
+    }
+    this.toast.show('Proveedor eliminado de la lista', 'info');
   }
 
   guardar(): void {
-    if (!this.codigo || !this.nombre || !this.categoria || this.precio == null) {
-      this.toast.show('No se cargaron los datos obligatorios: código, nombre, categoría y precio.', 'error');
+    if (!this.nombre?.trim() || !this.categoria?.trim()) {
+      this.toast.show('Completá nombre y categoría.', 'error');
+      return;
+    }
+    if (this.precioCosto == null || this.precioCosto < 0) {
+      this.toast.show('Ingresá un precio de costo válido.', 'error');
+      return;
+    }
+    if (this.porcentajeGanancia == null) {
+      this.toast.show('Ingresá el porcentaje de ganancia.', 'error');
+      return;
+    }
+    if (this.precio == null || this.precio <= 0) {
+      this.toast.show('El precio de venta debe ser mayor a cero.', 'error');
       return;
     }
 
-    const mapCaracteristicas: Record<string, string> = {};
-    for (const c of this.caracteristicas) {
-      const k = (c.clave || '').trim();
-      if (k) {
-        mapCaracteristicas[k] = c.valor ?? '';
+    const barras = this.codigoBarras.trim();
+    if (barras) {
+      const duplicado = this.db.getProductoByCodigoBarras(barras);
+      if (duplicado && duplicado.id !== this.productoId) {
+        this.toast.show('Ya existe un producto con ese código de barras.', 'error');
+        return;
       }
     }
 
     const producto: Producto = {
-      codigo: this.codigo.trim(),
+      codigo: this.productoId ? this.codigo.trim() : (barras || this.db.generarCodigoInterno()),
+      codigoBarras: barras || undefined,
       nombre: this.nombre.trim(),
       descripcion: this.descripcion.trim(),
+      precioCosto: Number(this.precioCosto),
+      porcentajeGanancia: Number(this.porcentajeGanancia),
       precio: Number(this.precio),
+      tipoVenta: this.tipoVenta,
       stock: Number(this.stock || 0),
       stockMinimo: Number(this.stockMinimo || 0),
       categoria: this.categoria.trim(),
       proveedor: this.proveedor.trim(),
       fechaCreacion: new Date(),
-      caracteristicas: Object.keys(mapCaracteristicas).length ? mapCaracteristicas : undefined
     };
 
-    if (this.editId) {
-      producto.id = this.editId;
-      const original = this.db.getProductoById(this.editId);
+    if (this.productoId) {
+      producto.id = this.productoId;
+      producto.codigo = this.codigo.trim();
+      const original = this.db.getProductoById(this.productoId);
       if (original?.fechaCreacion) {
         producto.fechaCreacion = original.fechaCreacion;
       }
@@ -203,11 +341,10 @@ export class ProductoFormComponent implements OnInit, OnDestroy {
       this.db.agregarProducto(producto);
       this.toast.show('Producto agregado', 'success');
     }
-    this.router.navigate(['/stock']);
+    this.guardado.emit();
   }
 
   cancelar(): void {
-    this.router.navigate(['/stock']);
+    this.cerrar.emit();
   }
 }
-

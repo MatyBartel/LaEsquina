@@ -1,18 +1,23 @@
 import { Injectable } from '@angular/core';
 import { BehaviorSubject, Observable } from 'rxjs';
 
+export type TipoVenta = 'unidad' | 'kg' | 'litro';
+
 export interface Producto {
   id?: number;
   codigo: string;
+  codigoBarras?: string;
   nombre: string;
   descripcion: string;
+  precioCosto: number;
+  porcentajeGanancia: number;
   precio: number;
+  tipoVenta: TipoVenta;
   stock: number;
   stockMinimo: number;
   categoria: string;
   proveedor: string;
   fechaCreacion: Date;
-  caracteristicas?: Record<string, string>;
 }
 
 export interface Venta {
@@ -87,6 +92,25 @@ export interface PedidoProveedor {
   pagado: boolean;
 }
 
+export interface Gasto {
+  id?: number;
+  fecha: Date;
+  descripcion: string;
+  categoria: string;
+  monto: number;
+}
+
+/** Solo para migrar instalaciones que guardaron la lista inicial fija. */
+const CATEGORIAS_GASTO_LEGACY = [
+  'Alquiler',
+  'Servicios',
+  'Sueldos',
+  'Mercadería',
+  'Mantenimiento',
+  'Impuestos',
+  'Otros'
+];
+
 @Injectable({
   providedIn: 'root'
 })
@@ -94,16 +118,22 @@ export class DatabaseService {
   private productosSubject = new BehaviorSubject<Producto[]>([]);
   private ventasSubject = new BehaviorSubject<Venta[]>([]);
   private categoriasSubject = new BehaviorSubject<string[]>([]);
+  private proveedoresListaSubject = new BehaviorSubject<string[]>([]);
   private vendedoresSubject = new BehaviorSubject<string[]>([]);
   private proveedoresSubject = new BehaviorSubject<Proveedor[]>([]);
   private pedidosSubject = new BehaviorSubject<PedidoProveedor[]>([]);
+  private gastosSubject = new BehaviorSubject<Gasto[]>([]);
+  private categoriasGastoSubject = new BehaviorSubject<string[]>([]);
 
   productos$ = this.productosSubject.asObservable();
   ventas$ = this.ventasSubject.asObservable();
   categorias$ = this.categoriasSubject.asObservable();
+  proveedoresLista$ = this.proveedoresListaSubject.asObservable();
   vendedores$ = this.vendedoresSubject.asObservable();
   proveedores$ = this.proveedoresSubject.asObservable();
   pedidos$ = this.pedidosSubject.asObservable();
+  gastos$ = this.gastosSubject.asObservable();
+  categoriasGasto$ = this.categoriasGastoSubject.asObservable();
 
   constructor() {
     this.inicializarBaseDatos();
@@ -125,24 +155,118 @@ export class DatabaseService {
         this.inicializarEjemplo();
         return;
       }
-      const productos = JSON.parse((await electronAPI.kvGet('productos')) || '[]');
+      const productosRaw = JSON.parse((await electronAPI.kvGet('productos')) || '[]');
+      const productos = productosRaw.map((p: any) => this.normalizarProducto(p));
       const ventas = JSON.parse((await electronAPI.kvGet('ventas')) || '[]');
       const categorias = JSON.parse((await electronAPI.kvGet('categorias')) || '[]');
+      const proveedoresListaRaw = JSON.parse((await electronAPI.kvGet('proveedoresLista')) || 'null');
       const vendedores = JSON.parse((await electronAPI.kvGet('vendedores')) || '[]');
       const proveedores = JSON.parse((await electronAPI.kvGet('proveedores')) || '[]');
       const pedidos = JSON.parse((await electronAPI.kvGet('pedidos')) || '[]');
+      const gastos = JSON.parse((await electronAPI.kvGet('gastos')) || '[]');
+      const categoriasGastoRaw = JSON.parse((await electronAPI.kvGet('categoriasGasto')) || 'null');
 
       productos.forEach((p: any) => p.fechaCreacion && (p.fechaCreacion = new Date(p.fechaCreacion)));
       ventas.forEach((v: any) => v.fecha && (v.fecha = new Date(v.fecha)));
       pedidos.forEach((p: any) => p.fecha && (p.fecha = new Date(p.fecha)));
+      gastos.forEach((g: any) => g.fecha && (g.fecha = new Date(g.fecha)));
 
       this.productosSubject.next(productos);
       this.ventasSubject.next(ventas);
       this.categoriasSubject.next(categorias);
+      const proveedoresLista = this.resolverProveedoresLista(
+        Array.isArray(proveedoresListaRaw) ? proveedoresListaRaw : [],
+        productos,
+        proveedores
+      );
+      this.proveedoresListaSubject.next(proveedoresLista);
+      if (this.debePersistirProveedoresLista(proveedoresListaRaw, proveedoresLista)) {
+        this.persistirProveedoresLista();
+      }
       this.vendedoresSubject.next(vendedores.length ? vendedores : ['Vendedor 1']);
       this.proveedoresSubject.next(proveedores);
       this.pedidosSubject.next(pedidos);
+      this.gastosSubject.next(gastos);
+      const categoriasGasto = this.resolverCategoriasGasto(
+        Array.isArray(categoriasGastoRaw) ? categoriasGastoRaw : [],
+        gastos
+      );
+      this.categoriasGastoSubject.next(categoriasGasto);
+      if (this.debePersistirCategoriasGasto(categoriasGastoRaw, categoriasGasto)) {
+        this.persistirCategoriasGasto();
+      }
+      if (productosRaw.some((p: any) => this.necesitaMigracion(p))) {
+        this.persistirProductos();
+      }
     } catch { this.inicializarEjemplo(); }
+  }
+
+  private necesitaMigracion(p: any): boolean {
+    return p.precioCosto == null || p.porcentajeGanancia == null || !p.tipoVenta;
+  }
+
+  private normalizarProducto(raw: any): Producto {
+    const attrs = raw?.caracteristicas || {};
+    const costoAttr = Number(String(attrs.precioCosto ?? '').replace(',', '.'));
+    const pctAttr = Number(String(attrs.gananciaPct ?? '').replace(',', '.'));
+    const precio = Number(raw?.precio) || 0;
+
+    let precioCosto = Number(raw?.precioCosto);
+    if (!isFinite(precioCosto) || precioCosto < 0) {
+      precioCosto = isFinite(costoAttr) && costoAttr >= 0 ? costoAttr : precio;
+    }
+
+    let porcentajeGanancia = Number(raw?.porcentajeGanancia);
+    if (!isFinite(porcentajeGanancia)) {
+      if (isFinite(pctAttr)) {
+        porcentajeGanancia = pctAttr;
+      } else if (precioCosto > 0 && precio > 0) {
+        porcentajeGanancia = Number((((precio / precioCosto) - 1) * 100).toFixed(2));
+      } else {
+        porcentajeGanancia = 0;
+      }
+    }
+
+    const tipoVenta: TipoVenta = raw?.tipoVenta === 'kg' || raw?.tipoVenta === 'litro'
+      ? raw.tipoVenta
+      : 'unidad';
+
+    return {
+      id: raw?.id,
+      codigo: String(raw?.codigo || '').trim(),
+      codigoBarras: raw?.codigoBarras ? String(raw.codigoBarras).trim() : undefined,
+      nombre: String(raw?.nombre || '').trim(),
+      descripcion: String(raw?.descripcion || '').trim(),
+      precioCosto,
+      porcentajeGanancia,
+      precio: precio > 0 ? precio : Number((precioCosto * (1 + porcentajeGanancia / 100)).toFixed(2)),
+      tipoVenta,
+      stock: Number(raw?.stock) || 0,
+      stockMinimo: Number(raw?.stockMinimo) || 0,
+      categoria: String(raw?.categoria || '').trim(),
+      proveedor: String(raw?.proveedor || '').trim(),
+      fechaCreacion: raw?.fechaCreacion ? new Date(raw.fechaCreacion) : new Date()
+    };
+  }
+
+  generarCodigoInterno(): string {
+    const productos = this.productosSubject.value;
+    const nextId = productos.length ? Math.max(...productos.map(p => p.id || 0)) + 1 : 1;
+    return `PRD-${String(nextId).padStart(5, '0')}`;
+  }
+
+  getProductoByCodigoBarras(codigoBarras: string): Producto | undefined {
+    const code = (codigoBarras || '').trim();
+    if (!code) return undefined;
+    return this.productosSubject.value.find(p =>
+      (p.codigoBarras || '').trim() === code || (p.codigo || '').trim() === code
+    );
+  }
+
+  calcularPrecioVenta(costo: number, porcentaje: number): number {
+    const c = Number(costo) || 0;
+    const pct = Number(porcentaje) || 0;
+    return Number((c * (1 + pct / 100)).toFixed(2));
   }
 
   private inicializarEjemplo(): void {
@@ -152,7 +276,10 @@ export class DatabaseService {
         codigo: 'MART-001',
         nombre: 'Martillo 16oz',
         descripcion: 'Martillo de acero con mango de madera',
+        precioCosto: 18,
+        porcentajeGanancia: 44.39,
         precio: 25.99,
+        tipoVenta: 'unidad',
         stock: 50,
         stockMinimo: 10,
         categoria: 'Herramientas Manuales',
@@ -164,7 +291,10 @@ export class DatabaseService {
         codigo: 'DEST-001',
         nombre: 'Destornillador Phillips #2',
         descripcion: 'Destornillador Phillips de 6 pulgadas',
+        precioCosto: 5.5,
+        porcentajeGanancia: 54.55,
         precio: 8.50,
+        tipoVenta: 'unidad',
         stock: 100,
         stockMinimo: 20,
         categoria: 'Herramientas Manuales',
@@ -199,11 +329,18 @@ export class DatabaseService {
     this.vendedoresSubject.next(['Vendedor 1']);
     this.proveedoresSubject.next([]);
     this.pedidosSubject.next([]);
+    this.gastosSubject.next([]);
+    this.categoriasGastoSubject.next([]);
 
     const categoriasUnicas = Array.from(
       new Set(productosEjemplo.map(p => p.categoria.trim()).filter(Boolean))
     ).sort((a, b) => a.localeCompare(b));
     this.categoriasSubject.next(categoriasUnicas);
+
+    const proveedoresUnicos = Array.from(
+      new Set(productosEjemplo.map(p => p.proveedor.trim()).filter(Boolean))
+    ).sort((a, b) => a.localeCompare(b));
+    this.proveedoresListaSubject.next(proveedoresUnicos);
   }
 
   private persistirProductos(): void {
@@ -218,6 +355,10 @@ export class DatabaseService {
     this.persistirSqliteKv('categorias', this.categoriasSubject.value);
   }
 
+  private persistirProveedoresLista(): void {
+    this.persistirSqliteKv('proveedoresLista', this.proveedoresListaSubject.value);
+  }
+
   private persistirVendedores(): void {
     this.persistirSqliteKv('vendedores', this.vendedoresSubject.value);
   }
@@ -228,6 +369,75 @@ export class DatabaseService {
 
   private persistirPedidos(): void {
     this.persistirSqliteKv('pedidos', this.pedidosSubject.value);
+  }
+
+  private persistirGastos(): void {
+    this.persistirSqliteKv('gastos', this.gastosSubject.value);
+  }
+
+  private persistirCategoriasGasto(): void {
+    this.persistirSqliteKv('categoriasGasto', this.categoriasGastoSubject.value);
+  }
+
+  private esListaCategoriasGastoLegacy(categorias: string[]): boolean {
+    if (categorias.length !== CATEGORIAS_GASTO_LEGACY.length) return false;
+    const normalizadas = [...categorias].map(c => c.trim().toLowerCase()).sort();
+    const legacy = [...CATEGORIAS_GASTO_LEGACY].map(c => c.toLowerCase()).sort();
+    return normalizadas.every((c, i) => c === legacy[i]);
+  }
+
+  private categoriasDesdeGastos(gastos: Gasto[]): string[] {
+    return Array.from(
+      new Set(gastos.map(g => (g.categoria || '').trim()).filter(Boolean))
+    ).sort((a, b) => a.localeCompare(b));
+  }
+
+  private resolverCategoriasGasto(stored: string[], gastos: Gasto[]): string[] {
+    const limpias = stored.map(c => (c || '').trim()).filter(Boolean);
+    if (this.esListaCategoriasGastoLegacy(limpias)) {
+      return this.categoriasDesdeGastos(gastos);
+    }
+    if (limpias.length) return [...limpias].sort((a, b) => a.localeCompare(b));
+    return this.categoriasDesdeGastos(gastos);
+  }
+
+  private debePersistirCategoriasGasto(raw: unknown, resueltas: string[]): boolean {
+    if (!Array.isArray(raw)) return true;
+    if (this.esListaCategoriasGastoLegacy(raw.map(c => String(c || '').trim()).filter(Boolean))) {
+      return true;
+    }
+    return !raw.length && resueltas.length > 0;
+  }
+
+  private proveedoresDesdeProductos(productos: Producto[]): string[] {
+    return Array.from(
+      new Set(productos.map(p => (p.proveedor || '').trim()).filter(Boolean))
+    ).sort((a, b) => a.localeCompare(b));
+  }
+
+  private resolverProveedoresLista(stored: string[], productos: Producto[], legacyProveedores: Proveedor[]): string[] {
+    const limpias = stored.map(p => (p || '').trim()).filter(Boolean);
+    if (limpias.length) return [...limpias].sort((a, b) => a.localeCompare(b));
+
+    const desdeProductos = this.proveedoresDesdeProductos(productos);
+    const desdeLegacy = (legacyProveedores || [])
+      .map(p => (p.nombre || '').trim())
+      .filter(Boolean);
+    return Array.from(new Set([...desdeProductos, ...desdeLegacy])).sort((a, b) => a.localeCompare(b));
+  }
+
+  private debePersistirProveedoresLista(raw: unknown, resueltas: string[]): boolean {
+    if (!Array.isArray(raw)) return resueltas.length > 0;
+    return !raw.length && resueltas.length > 0;
+  }
+
+  private sincronizarProveedorEnLista(nombre: string): void {
+    const n = (nombre || '').trim();
+    if (!n) return;
+    const actuales = this.proveedoresListaSubject.value;
+    if (actuales.some(p => p.toLowerCase() === n.toLowerCase())) return;
+    this.proveedoresListaSubject.next([...actuales, n].sort((a, b) => a.localeCompare(b)));
+    this.persistirProveedoresLista();
   }
 
   getProductos(): Observable<Producto[]> {
@@ -247,6 +457,16 @@ export class DatabaseService {
     const nextId = productos.length ? Math.max(...productos.map(p => p.id || 0)) + 1 : 1;
     producto.id = nextId;
     producto.fechaCreacion = new Date();
+
+    const barras = (producto.codigoBarras || '').trim();
+    if (barras && !producto.codigo?.trim()) {
+      producto.codigo = barras;
+    }
+    if (!producto.codigo?.trim()) {
+      producto.codigo = this.generarCodigoInterno();
+    }
+
+    producto.precio = this.calcularPrecioVenta(producto.precioCosto, producto.porcentajeGanancia);
     this.productosSubject.next([...productos, producto]);
 
     const categorias = this.categoriasSubject.value;
@@ -254,11 +474,14 @@ export class DatabaseService {
     if (cat && !categorias.map(c => c.toLowerCase()).includes(cat.toLowerCase())) {
       this.categoriasSubject.next([...categorias, cat].sort((a, b) => a.localeCompare(b)));
     }
+    this.sincronizarProveedorEnLista(producto.proveedor);
 
     this.persistirProductos();
     this.persistirCategorias();
+    this.persistirProveedoresLista();
     this.persistirSqliteKv('productos', this.productosSubject.value);
     this.persistirSqliteKv('categorias', this.categoriasSubject.value);
+    this.persistirSqliteKv('proveedoresLista', this.proveedoresListaSubject.value);
   }
 
   actualizarProducto(producto: Producto): void {
@@ -267,8 +490,11 @@ export class DatabaseService {
     if (index !== -1) {
       productos[index] = { ...producto };
       this.productosSubject.next([...productos]);
+      this.sincronizarProveedorEnLista(producto.proveedor);
       this.persistirProductos();
+      this.persistirProveedoresLista();
       this.persistirSqliteKv('productos', this.productosSubject.value);
+      this.persistirSqliteKv('proveedoresLista', this.proveedoresListaSubject.value);
     }
   }
 
@@ -293,9 +519,12 @@ export class DatabaseService {
         actual.categoria !== nuevo.categoria ||
         actual.proveedor !== nuevo.proveedor ||
         actual.precio !== nuevo.precio ||
+        actual.precioCosto !== nuevo.precioCosto ||
+        actual.porcentajeGanancia !== nuevo.porcentajeGanancia ||
+        actual.tipoVenta !== nuevo.tipoVenta ||
+        actual.codigoBarras !== nuevo.codigoBarras ||
         actual.stock !== nuevo.stock ||
-        actual.stockMinimo !== nuevo.stockMinimo ||
-        JSON.stringify(actual.caracteristicas || {}) !== JSON.stringify(nuevo.caracteristicas || {})
+        actual.stockMinimo !== nuevo.stockMinimo
       );
       if (!changed) continue;
       productos[idx] = { ...nuevo };
@@ -398,20 +627,17 @@ export class DatabaseService {
         const existente = productos[idx];
         const merged: Producto = {
           ...existente,
-          // mantener id y fecha
           nombre: entry.nombre ?? existente.nombre,
           categoria: entry.categoria ?? existente.categoria,
           proveedor: entry.proveedor ?? existente.proveedor,
           descripcion: entry.descripcion ?? existente.descripcion,
+          precioCosto: typeof entry.precioCosto === 'number' ? entry.precioCosto : existente.precioCosto,
+          porcentajeGanancia: typeof entry.porcentajeGanancia === 'number' ? entry.porcentajeGanancia : existente.porcentajeGanancia,
           precio: typeof entry.precio === 'number' ? entry.precio : existente.precio,
-          // stock: mantener el existente a menos que se indique lo contrario
+          tipoVenta: entry.tipoVenta ?? existente.tipoVenta,
+          codigoBarras: entry.codigoBarras ?? existente.codigoBarras,
           stock: keepExistingStock ? existente.stock : (typeof entry.stock === 'number' ? entry.stock : existente.stock),
-          // no pisar stockMinimo a menos que venga explícito en entry
           stockMinimo: typeof entry.stockMinimo === 'number' ? entry.stockMinimo : existente.stockMinimo,
-          caracteristicas: {
-            ...(existente.caracteristicas || {}),
-            ...(entry.caracteristicas || {})
-          }
         };
         const changed = (
           merged.nombre !== existente.nombre ||
@@ -419,9 +645,12 @@ export class DatabaseService {
           merged.proveedor !== existente.proveedor ||
           merged.descripcion !== existente.descripcion ||
           merged.precio !== existente.precio ||
+          merged.precioCosto !== existente.precioCosto ||
+          merged.porcentajeGanancia !== existente.porcentajeGanancia ||
+          merged.tipoVenta !== existente.tipoVenta ||
+          merged.codigoBarras !== existente.codigoBarras ||
           merged.stock !== existente.stock ||
-          merged.stockMinimo !== existente.stockMinimo ||
-          JSON.stringify(merged.caracteristicas || {}) !== JSON.stringify(existente.caracteristicas || {})
+          merged.stockMinimo !== existente.stockMinimo
         );
         if (changed) {
           productos[idx] = merged;
@@ -602,12 +831,140 @@ export class DatabaseService {
   eliminarCategoria(nombre: string): boolean {
     const n = (nombre || '').trim();
     if (!n) return false;
-    const enUso = this.countProductosPorCategoria(n) > 0;
-    if (enUso) return false;
-    const nuevas = this.categoriasSubject.value.filter(c => c.toLowerCase() !== n.toLowerCase());
+    const categorias = this.categoriasSubject.value;
+    const existe = categorias.some(c => c.toLowerCase() === n.toLowerCase());
+    if (!existe) return false;
+    const nuevas = categorias.filter(c => c.toLowerCase() !== n.toLowerCase());
     this.categoriasSubject.next(nuevas);
     this.persistirCategorias();
     return true;
+  }
+
+  getProveedoresLista(): Observable<string[]> {
+    return this.proveedoresLista$;
+  }
+
+  agregarProveedorLista(nombre: string): void {
+    const n = (nombre || '').trim();
+    if (!n) return;
+    const proveedores = this.proveedoresListaSubject.value;
+    if (!proveedores.map(p => p.toLowerCase()).includes(n.toLowerCase())) {
+      this.proveedoresListaSubject.next([...proveedores, n].sort((a, b) => a.localeCompare(b)));
+      this.persistirProveedoresLista();
+    }
+  }
+
+  countProductosPorProveedor(nombre: string): number {
+    const n = (nombre || '').trim().toLowerCase();
+    if (!n) return 0;
+    return this.productosSubject.value.filter(p => (p.proveedor || '').trim().toLowerCase() === n).length;
+  }
+
+  eliminarProveedorLista(nombre: string): boolean {
+    const n = (nombre || '').trim();
+    if (!n) return false;
+    const proveedores = this.proveedoresListaSubject.value;
+    const existe = proveedores.some(p => p.toLowerCase() === n.toLowerCase());
+    if (!existe) return false;
+    this.proveedoresListaSubject.next(proveedores.filter(p => p.toLowerCase() !== n.toLowerCase()));
+    this.persistirProveedoresLista();
+    return true;
+  }
+
+  getGastos(): Observable<Gasto[]> {
+    return this.gastos$;
+  }
+
+  getGastosActuales(): Gasto[] {
+    return this.gastosSubject.value;
+  }
+
+  getCategoriasGasto(): Observable<string[]> {
+    return this.categoriasGasto$;
+  }
+
+  agregarCategoriaGasto(nombre: string): void {
+    const n = (nombre || '').trim();
+    if (!n) return;
+    const categorias = this.categoriasGastoSubject.value;
+    if (!categorias.map(c => c.toLowerCase()).includes(n.toLowerCase())) {
+      this.categoriasGastoSubject.next([...categorias, n].sort((a, b) => a.localeCompare(b)));
+      this.persistirCategoriasGasto();
+    }
+  }
+
+  countGastosPorCategoria(nombre: string): number {
+    const n = (nombre || '').trim().toLowerCase();
+    if (!n) return 0;
+    return this.gastosSubject.value.filter(g => (g.categoria || '').trim().toLowerCase() === n).length;
+  }
+
+  eliminarCategoriaGasto(nombre: string): boolean {
+    const n = (nombre || '').trim();
+    if (!n) return false;
+    const categorias = this.categoriasGastoSubject.value;
+    const existe = categorias.some(c => c.toLowerCase() === n.toLowerCase());
+    if (!existe) return false;
+    this.categoriasGastoSubject.next(categorias.filter(c => c.toLowerCase() !== n.toLowerCase()));
+    this.persistirCategoriasGasto();
+    return true;
+  }
+
+  agregarGasto(gasto: Gasto): void {
+    const gastos = this.gastosSubject.value;
+    const nextId = gastos.length ? Math.max(...gastos.map(g => g.id || 0)) + 1 : 1;
+    gasto.id = nextId;
+    gasto.fecha = new Date(gasto.fecha);
+    this.gastosSubject.next([...gastos, gasto]);
+
+    const cat = (gasto.categoria || '').trim();
+    if (cat) this.agregarCategoriaGasto(cat);
+
+    this.persistirGastos();
+  }
+
+  actualizarGasto(gasto: Gasto): void {
+    const gastos = this.gastosSubject.value;
+    const idx = gastos.findIndex(g => g.id === gasto.id);
+    if (idx === -1) return;
+    gastos[idx] = { ...gasto, fecha: new Date(gasto.fecha) };
+    this.gastosSubject.next([...gastos]);
+
+    const cat = (gasto.categoria || '').trim();
+    if (cat) this.agregarCategoriaGasto(cat);
+
+    this.persistirGastos();
+  }
+
+  eliminarGasto(id: number): void {
+    const gastos = this.gastosSubject.value.filter(g => g.id !== id);
+    this.gastosSubject.next(gastos);
+    this.persistirGastos();
+  }
+
+  getGastosEnRango(inicio: Date, fin: Date): Gasto[] {
+    const start = inicio.getTime();
+    const end = fin.getTime();
+    return this.gastosSubject.value.filter(g => {
+      const t = new Date(g.fecha).getTime();
+      return t >= start && t <= end;
+    });
+  }
+
+  getTotalGastosEnRango(inicio: Date, fin: Date): number {
+    return this.getGastosEnRango(inicio, fin).reduce((acc, g) => acc + (Number(g.monto) || 0), 0);
+  }
+
+  getInicioFinMes(anio: number, mes: number): { inicio: Date; fin: Date } {
+    const inicio = new Date(anio, mes, 1, 0, 0, 0, 0);
+    const fin = new Date(anio, mes + 1, 0, 23, 59, 59, 999);
+    return { inicio, fin };
+  }
+
+  getInicioFinDia(anio: number, mes: number, dia: number): { inicio: Date; fin: Date } {
+    const inicio = new Date(anio, mes, dia, 0, 0, 0, 0);
+    const fin = new Date(anio, mes, dia, 23, 59, 59, 999);
+    return { inicio, fin };
   }
 
   getVendedores(): Observable<string[]> {

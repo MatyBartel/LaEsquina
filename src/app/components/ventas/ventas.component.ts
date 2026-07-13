@@ -5,6 +5,7 @@ import { FormsModule } from '@angular/forms';
 import { DatabaseService, Producto, Venta, VentaProducto, PagoVenta } from '../../services/database.service';
 import { Subscription } from 'rxjs';
 import { ToastService } from '../../services/toast.service';
+import { BRAND } from '../../config/brand.config';
 type VentaProductoExt = VentaProducto & { editCantidad?: string };
 type PagoVentaExt = PagoVenta & { montoStr?: string };
 
@@ -702,7 +703,7 @@ export class VentasComponent implements OnInit, OnDestroy {
         }));
       }
       const payload = {
-        negocio: { nombre: 'Ferretería "El Tano"', dir1: 'Batalla de Ituzaingó 2739', dir2: '1888, Fcio. Varela' },
+        negocio: { nombre: BRAND.nombre },
         fecha: fechaStr,
         numero: venta.numeroTicket,
         vendedor: venta.vendedor,

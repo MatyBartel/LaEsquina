@@ -14,6 +14,7 @@ import { Subscription } from 'rxjs';
 export class DashboardComponent implements OnInit, OnDestroy {
   totalProductos = 0;
   totalVentasHoy = 0; 
+  totalGastadoHoy = 0;
   productosBajoStock = 0;
   totalVentas = 0;
   productosBajoStockList: Producto[] = [];
@@ -51,18 +52,24 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.aplicarFiltroDia();
       })
     );
+
+    this.subscription.add(
+      this.databaseService.gastos$.subscribe(() => {
+        this.aplicarFiltroDia();
+      })
+    );
   }
 
   get tituloVentasCard(): string {
     return this.fechaSeleccionada ? `Ventas del ${this.fechaSeleccionada}` : 'Ventas Hoy';
   }
 
-  get tituloUltimas(): string {
-    return this.fechaSeleccionada ? 'Últimas Ventas del día' : 'Últimas Ventas';
+  get tituloGastadoCard(): string {
+    return this.fechaSeleccionada ? `Total Gastado del ${this.fechaSeleccionada}` : 'Total Gastado Hoy';
   }
 
-  get tituloTotalVentasCard(): string {
-    return this.fechaSeleccionada ? `Total Ventas del ${this.fechaSeleccionada}` : 'Total Ventas Hoy';
+  get tituloUltimas(): string {
+    return this.fechaSeleccionada ? 'Últimas Ventas del día' : 'Últimas Ventas';
   }
 
   onFechaChangeDesdeDate(value: string): void {
@@ -98,6 +105,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const delDia = ventas.filter(v => v.fecha >= inicio && v.fecha <= fin);
     this.totalVentas = delDia.length;
     this.totalVentasHoy = delDia.reduce((acc, v) => acc + v.total, 0);
+    this.totalGastadoHoy = this.databaseService.getTotalGastosEnRango(inicio, fin);
     this.ultimasVentas = delDia
       .slice()
       .sort((a, b) => new Date(b.fecha).getTime() - new Date(a.fecha).getTime())
