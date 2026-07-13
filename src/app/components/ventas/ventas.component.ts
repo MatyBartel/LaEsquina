@@ -399,6 +399,7 @@ export class VentasComponent implements OnInit, OnDestroy {
     this.descuentoPct = 0;
     this.descuentoMonto = 0;
     this.filtro = '';
+    this.clearTotalManual();
   }
 
   get ultimas24h(): Venta[] {

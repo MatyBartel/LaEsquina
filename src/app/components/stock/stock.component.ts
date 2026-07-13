@@ -33,15 +33,20 @@ export class StockComponent implements OnInit, OnDestroy {
   resumenValidaciones = '';
 
   showMassPrice = false;
-  porcentaje = 0;
   seleccionados = new Set<number>();
   categoriaAumento = '';
-  massActionMode: 'precio' | 'stock' = 'precio';
   cantidadStock = 0;
   codigosDuplicados: string[] = [];
-  // Paginación
   page = 1;
   pageSize = 10;
+  eliminarNoPresentes = false;
+
+  loading: { visible: boolean; done: boolean; title: string; summary: any } = {
+    visible: false,
+    done: false,
+    title: '',
+    summary: {}
+  };
 
   constructor(private db: DatabaseService, private toast: ToastService) {}
 
@@ -172,70 +177,91 @@ export class StockComponent implements OnInit, OnDestroy {
   async procesarExcel(): Promise<void> {
     if (!this.archivoExcel) return;
     try {
+      this.startLoading('Cargando productos');
+      await new Promise(r => setTimeout(r));
       const buffer = await this.archivoExcel.arrayBuffer();
       const wb = read(new Uint8Array(buffer), { type: 'array' });
-      const productosCreados: number[] = [];
-      let procesados = 0;
-      const codigosVistos = new Set<string>();
-      const duplicados: string[] = [];
-      const updatesStockBatch: Record<string, number> = {};
+
+      const rowsAll: any[] = [];
       for (const sheetName of wb.SheetNames) {
         const ws = wb.Sheets[sheetName];
         if (!ws) continue;
         const rows: any[] = utils.sheet_to_json(ws, { defval: '' });
-        for (const row of rows) {
-          procesados++;
-          // Normalizar para detectar columna de stock (si existe en el archivo)
-          const normalized: Record<string, any> = {};
-          for (const [k, v] of Object.entries(row)) normalized[String(k).trim().toLowerCase()] = v;
-          const stockRaw = Object.entries(normalized).find(([kk]) => kk.includes('stock'))?.[1];
-          const stockNum = Number(String(stockRaw ?? '').toString().replace(/[^0-9.-]/g, '').replace(',', '.'));
+        rowsAll.push(...rows);
+      }
 
-          const p = this.mapRowToProducto(row);
-          if (!p) continue;
-          const codigo = (p.codigo || '').trim();
-          if (codigosVistos.has(codigo)) { duplicados.push(codigo); continue; }
-          if (codigo) codigosVistos.add(codigo);
+      const vistos = new Set<string>();
+      const duplicados: string[] = [];
+      const productosParaUpsert: Producto[] = [];
+      let sinPrecioCalculable = 0;
+      const codigosSinPrecio: string[] = [];
+      let sinCodigoCount = 0;
+      const sinCodigoNombres: string[] = [];
+      let procesados = 0;
 
-          const existente = this.db.getProductoByCodigo(p.codigo);
-          if (existente) {
-            // No modificar stock existente; solo actualizar otros campos si cambian
-            const actualizado = {
-              ...existente,
-              nombre: p.nombre,
-              categoria: p.categoria,
-              proveedor: p.proveedor,
-              descripcion: p.descripcion,
-              precio: p.precio,
-              caracteristicas: {
-                ...(existente.caracteristicas || {}),
-                ...(p.caracteristicas || {})
-              }
-            } as Producto;
-            this.db.actualizarProducto(actualizado);
-            // Importante: NO agregar a updatesStockBatch
-          } else {
-            // Producto nuevo: permitir cargar stock inicial si viene en el Excel
-            if (!isNaN(stockNum)) {
-              p.stock = Math.max(0, Math.trunc(stockNum));
-            }
-            this.db.agregarProducto(p);
-            if (p.id) productosCreados.push(p.id);
-          }
+      for (const row of rowsAll) {
+        procesados++;
+        const normalized: Record<string, any> = {};
+        for (const [k, v] of Object.entries(row)) normalized[String(k).trim().toLowerCase()] = v;
+        const stockRaw = Object.entries(normalized).find(([kk]) => kk.includes('stock'))?.[1];
+        const stockNum = Number(String(stockRaw ?? '').toString().replace(/[^0-9.-]/g, '').replace(',', '.'));
+
+        const codigoRawEntry = Object.entries(normalized).find(([kk]) => kk.includes('codigo'))?.[1];
+        const codigoRaw = String(codigoRawEntry ?? '').trim();
+        if (!codigoRaw) {
+          sinCodigoCount++;
+          const nameCandidate = String(Object.entries(normalized).find(([kk]) => kk.includes('nombre'))?.[1] ?? '').trim();
+          if (nameCandidate) sinCodigoNombres.push(nameCandidate);
+          continue;
+        }
+
+        const p = this.mapRowToProducto(row);
+        if (!p) continue;
+        const codigo = (p.codigo || '').trim();
+        if (codigo && vistos.has(codigo)) { duplicados.push(codigo); continue; }
+        if (codigo) vistos.add(codigo);
+        if (!isNaN(stockNum)) p.stock = Math.max(0, Math.trunc(stockNum));
+        if (!p.precio || !isFinite(p.precio) || p.precio <= 0) {
+          sinPrecioCalculable++;
+          if (codigo) codigosSinPrecio.push(codigo);
+        }
+        productosParaUpsert.push(p);
+        if (procesados % 500 === 0) { await new Promise(r => setTimeout(r)); }
+      }
+
+      const res = this.db.upsertProductosPorCodigoEnBloque(productosParaUpsert, { keepExistingStock: true });
+
+      // Borrado de no presentes
+      let eliminados = 0;
+      let codigosEliminados: string[] = [];
+      if (this.eliminarNoPresentes) {
+        const codigosExcel = new Set(productosParaUpsert.map(p => (p.codigo || '').trim()).filter(Boolean));
+        const actuales = this.db.getProductosActuales();
+        const codigosSistema = actuales.map(p => (p.codigo || '').trim()).filter(Boolean);
+        const paraEliminar = codigosSistema.filter(c => !codigosExcel.has(c));
+        if (paraEliminar.length) {
+          eliminados = this.db.eliminarProductosPorCodigoEnBloque(paraEliminar);
+          codigosEliminados = paraEliminar.slice(0, 1000);
         }
       }
-      // Aplicar batch de stock al final para eficiencia
-      const batchRes = this.db.actualizarStocksPorCodigoBatch(updatesStockBatch);
-      this.ultimaImportacionIds = productosCreados;
+      this.ultimaImportacionIds = [];
       this.codigosDuplicados = Array.from(new Set(duplicados));
-      const dupTxt = this.codigosDuplicados.length ? ` • Duplicados: ${this.codigosDuplicados.join(', ')}` : '';
-      const unknownTxt = (batchRes.unknown && batchRes.unknown.length) ? ` • Códigos sin match: ${batchRes.unknown.slice(0,10).join(', ')}${batchRes.unknown.length>10?'...':''}` : '';
-      this.resumenCarga = `Procesados: ${procesados}. Nuevos: ${productosCreados.length}. Stocks actualizados: ${batchRes.updated}.${dupTxt}${unknownTxt}`;
-      this.resumenValidaciones = `${this.codigosDuplicados.length ? ('Duplicados: ' + this.codigosDuplicados.join(', ')) : ''} ${batchRes.unknown.length ? ('Códigos sin match: ' + batchRes.unknown.length + '.') : ''}`.trim();
-      this.toast.show(`Procesados: ${procesados}. Nuevos: ${productosCreados.length}. Stocks: ${batchRes.updated}.${this.codigosDuplicados.length?(' Duplicados: '+this.codigosDuplicados.length+'.'):''}${batchRes.unknown.length?(' Sin match: '+batchRes.unknown.length+'.'):''}`, 'success');
+      const dupTxt = this.codigosDuplicados.length ? ` • Duplicados en archivo: ${this.codigosDuplicados.length}` : '';
+      const sinPrecioTxt = sinPrecioCalculable ? ` • Sin precio calculable: ${sinPrecioCalculable}` : '';
+      const sinCodigoTxt = sinCodigoCount ? ` • Sin código: ${sinCodigoCount}` : '';
+      const elimTxt = eliminados ? ` • Eliminados: ${eliminados}` : '';
+      this.resumenCarga = `Procesados: ${procesados}. Nuevos: ${res.created}. Actualizados: ${res.updated}.${dupTxt}${sinPrecioTxt}${sinCodigoTxt}${elimTxt}`;
+      const detallesSinPrecio = sinPrecioCalculable ? `Sin precio (ej.): ${codigosSinPrecio.slice(0,20).join(', ')}${sinPrecioCalculable>20?'...':''}` : '';
+      const detallesDup = this.codigosDuplicados.length ? `Duplicados: ${this.codigosDuplicados.slice(0,20).join(', ')}${this.codigosDuplicados.length>20?'...':''}` : '';
+      const detallesSinCodigo = sinCodigoCount ? `Sin código (ej. nombres): ${sinCodigoNombres.slice(0,20).join(', ')}${sinCodigoNombres.length>20?'...':''}` : '';
+      const detallesElim = eliminados ? `Eliminados: ${codigosEliminados.join(', ')}` : '';
+      this.resumenValidaciones = [detallesDup, detallesSinPrecio, detallesSinCodigo, detallesElim].filter(Boolean).join(' · ');
+      this.toast.show(`Procesados: ${procesados}. Nuevos: ${res.created}. Actualizados: ${res.updated}.${sinPrecioTxt}${sinCodigoTxt}${elimTxt}`, 'success');
       this.mostrarCargaExcel = false;
+      this.finishLoadingSuccess({ nuevos: res.created, actualizados: res.updated, duplicados: this.codigosDuplicados, sinPrecio: codigosSinPrecio, sinCodigoCount, sinCodigoNombres, eliminados });
     } catch (e) {
       this.toast.show('No se pudo leer el Excel. Verificá el formato.', 'error');
+      this.loading.visible = false;
     }
   }
 
@@ -283,18 +309,19 @@ export class StockComponent implements OnInit, OnDestroy {
     const pctStr = get(['porcentaje ganancia','% ganancia','ganancia']);
     const proveedor = get(['proveedor']);
     const descripcion = get(['descripcion','descripción']);
-    if (!codigo && !nombre) return null;
+    // Requerir código, si no hay, no crear producto
+    if (!codigo) return null;
     const costo = Number(String(costoStr).replace(/[^0-9.,-]/g, '').replace(',', '.')) || 0;
     const pct = Number(String(pctStr).replace(/[^0-9.,-]/g, '').replace(',', '.')) || 0;
     const precio = Number((costo * (1 + pct / 100)).toFixed(2));
     const producto: Producto = {
-      codigo: codigo || nombre,
+      codigo: codigo,
       nombre: nombre || codigo,
       descripcion: descripcion || '',
       precio: precio,
       stock: 0,
       stockMinimo: 0,
-      categoria: categoria || 'Sin categoría',
+      categoria: categoria || '',
       proveedor: proveedor || '',
       fechaCreacion: new Date(),
       caracteristicas: {
@@ -357,35 +384,15 @@ export class StockComponent implements OnInit, OnDestroy {
     this.seleccionados.clear();
   }
 
-  aplicarAumento(): void {
+  async aplicarAumento(): Promise<void> {
     const porSeleccion = this.seleccionados.size > 0;
     const porCategoria = !!this.categoriaAumento;
-
-    if (this.massActionMode === 'precio') {
-      const pct = Number(this.porcentaje);
-      if (isNaN(pct)) { this.toast.show('Porcentaje inválido', 'error'); return; }
-      const factor = 1 + (pct / 100);
-      const afectadas: Producto[] = [];
-      for (const p of this.productos) {
-        const matchSel = porSeleccion && p.id ? this.seleccionados.has(p.id) : false;
-        const matchCat = porCategoria ? p.categoria === this.categoriaAumento : false;
-        const aplicar = (porSeleccion && matchSel) || (porCategoria && matchCat) || (!porSeleccion && !porCategoria);
-        if (aplicar) {
-          const nuevo = { ...p, precio: Number((p.precio * factor).toFixed(2)) };
-          afectadas.push(nuevo);
-        }
-      }
-      if (!afectadas.length) { this.toast.show('No hay productos que coincidan con la selección.', 'warning'); return; }
-      for (const prod of afectadas) { this.db.actualizarProducto(prod); }
-      this.toast.show(`Precios actualizados (${pct}% sobre ${afectadas.length} productos).`);
-      this.showMassPrice = false;
-      this.limpiarSeleccion();
-      return;
-    }
 
     const cant = Math.trunc(Number(this.cantidadStock));
     if (!isFinite(cant) || cant === 0) { this.toast.show('Ingresá una cantidad de stock válida (entero distinto de 0).', 'error'); return; }
     const afectadas: Producto[] = [];
+    this.startLoading('Aplicando cambios');
+    await new Promise(r => setTimeout(r));
     for (const p of this.productos) {
       const matchSel = porSeleccion && p.id ? this.seleccionados.has(p.id) : false;
       const matchCat = porCategoria ? p.categoria === this.categoriaAumento : false;
@@ -396,12 +403,13 @@ export class StockComponent implements OnInit, OnDestroy {
         afectadas.push(nuevo);
       }
     }
-    if (!afectadas.length) { this.toast.show('No hay productos que coincidan con la selección.', 'warning'); return; }
-    for (const prod of afectadas) { this.db.actualizarProducto(prod); }
+    if (!afectadas.length) { this.toast.show('No hay productos que coincidan con la selección.', 'warning'); this.cerrarLoading(); return; }
+    const count = this.db.actualizarProductosEnBloquePorId(afectadas);
     const scopeTxt = porSeleccion ? 'seleccionados' : (porCategoria ? `categoría "${this.categoriaAumento}"` : 'todos los productos filtrados');
-    this.toast.show(`Stock actualizado (±${cant} en ${afectadas.length} productos, ${scopeTxt}).`);
+    this.toast.show(`Stock actualizado (±${cant} en ${count} productos, ${scopeTxt}).`);
     this.showMassPrice = false;
     this.limpiarSeleccion();
+    this.finishLoadingSuccess({ modificados: count });
   }
 
   onStockChange(p: Producto, value: any): void {
@@ -415,5 +423,17 @@ export class StockComponent implements OnInit, OnDestroy {
     const val = Math.max(0, Math.trunc(Number(p.stock || 0)));
     if (p.stock !== val) p.stock = val;
     this.db.actualizarProducto(p);
+  }
+
+  private startLoading(title: string): void {
+    this.loading = { visible: true, done: false, title, summary: {} };
+  }
+
+  private finishLoadingSuccess(summary: any): void {
+    this.loading = { ...this.loading, done: true, summary };
+  }
+
+  cerrarLoading(): void {
+    this.loading = { visible: false, done: false, title: '', summary: {} };
   }
 }

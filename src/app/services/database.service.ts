@@ -272,11 +272,70 @@ export class DatabaseService {
     }
   }
 
+  actualizarProductosEnBloquePorId(actualizados: Producto[]): number {
+    if (!Array.isArray(actualizados) || !actualizados.length) return 0;
+    const productos = this.productosSubject.value;
+    const idToIndex = new Map<number, number>();
+    for (let i = 0; i < productos.length; i++) {
+      const id = productos[i].id;
+      if (typeof id === 'number') idToIndex.set(id, i);
+    }
+    let count = 0;
+    for (const nuevo of actualizados) {
+      const id = nuevo.id;
+      if (typeof id !== 'number') continue;
+      const idx = idToIndex.get(id);
+      if (idx === undefined) continue;
+      const actual = productos[idx];
+      const changed = (
+        actual.nombre !== nuevo.nombre ||
+        actual.descripcion !== nuevo.descripcion ||
+        actual.categoria !== nuevo.categoria ||
+        actual.proveedor !== nuevo.proveedor ||
+        actual.precio !== nuevo.precio ||
+        actual.stock !== nuevo.stock ||
+        actual.stockMinimo !== nuevo.stockMinimo ||
+        JSON.stringify(actual.caracteristicas || {}) !== JSON.stringify(nuevo.caracteristicas || {})
+      );
+      if (!changed) continue;
+      productos[idx] = { ...nuevo };
+      count++;
+    }
+    if (count > 0) {
+      this.productosSubject.next([...productos]);
+      this.persistirProductos();
+      this.persistirSqliteKv('productos', this.productosSubject.value);
+    }
+    return count;
+  }
+
   eliminarProducto(id: number): void {
     const productos = this.productosSubject.value;
     this.productosSubject.next(productos.filter(p => p.id !== id));
     this.persistirProductos();
     this.persistirSqliteKv('productos', this.productosSubject.value);
+  }
+
+  eliminarProductosPorCodigoEnBloque(codigos: string[]): number {
+    if (!Array.isArray(codigos) || !codigos.length) return 0;
+    const set = new Set(codigos.map(c => (c || '').trim()).filter(Boolean));
+    if (!set.size) return 0;
+    const antes = this.productosSubject.value;
+    const despues = antes.filter(p => !set.has((p.codigo || '').trim()));
+    const eliminados = antes.length - despues.length;
+    if (eliminados <= 0) return 0;
+    this.productosSubject.next(despues);
+
+    const categoriasUnicas = Array.from(
+      new Set(despues.map(p => (p.categoria || '').trim()).filter(Boolean))
+    ).sort((a, b) => a.localeCompare(b));
+    this.categoriasSubject.next(categoriasUnicas);
+
+    this.persistirProductos();
+    this.persistirCategorias();
+    this.persistirSqliteKv('productos', this.productosSubject.value);
+    this.persistirSqliteKv('categorias', this.categoriasSubject.value);
+    return eliminados;
   }
 
   actualizarStocksPorCodigoBatch(updates: Record<string, number>): { updated: number; unknown: string[] } {
@@ -306,6 +365,96 @@ export class DatabaseService {
       this.persistirSqliteKv('productos', this.productosSubject.value);
     }
     return { updated: updatedCount, unknown };
+  }
+
+  /**
+   * Inserta o actualiza muchos productos de una sola vez, identificándolos por su código.
+   * - Si el producto existe (mismo código), actualiza campos básicos y mantiene el stock actual por defecto.
+   * - Si no existe, lo crea asignando un id nuevo y respetando el stock provisto en la entrada.
+   * - Emite una única vez a los observers y persiste una sola vez para mejorar el rendimiento.
+   */
+  upsertProductosPorCodigoEnBloque(entries: Producto[], opciones?: { keepExistingStock?: boolean }): { created: number; updated: number } {
+    const keepExistingStock = opciones?.keepExistingStock !== false;
+    const actuales = this.productosSubject.value;
+    const productos = [...actuales];
+    let created = 0;
+    let updated = 0;
+
+    // Mapear códigos existentes a sus índices y calcular próximo id
+    const codigoToIndex = new Map<string, number>();
+    let maxId = 0;
+    for (let i = 0; i < productos.length; i++) {
+      const p = productos[i];
+      const c = (p.codigo || '').trim();
+      if (c) codigoToIndex.set(c, i);
+      if (typeof p.id === 'number') maxId = Math.max(maxId, p.id);
+    }
+
+    for (const entry of entries) {
+      const codigo = (entry.codigo || '').trim();
+      if (!codigo) continue;
+      const idx = codigoToIndex.get(codigo);
+      if (idx !== undefined) {
+        const existente = productos[idx];
+        const merged: Producto = {
+          ...existente,
+          // mantener id y fecha
+          nombre: entry.nombre ?? existente.nombre,
+          categoria: entry.categoria ?? existente.categoria,
+          proveedor: entry.proveedor ?? existente.proveedor,
+          descripcion: entry.descripcion ?? existente.descripcion,
+          precio: typeof entry.precio === 'number' ? entry.precio : existente.precio,
+          // stock: mantener el existente a menos que se indique lo contrario
+          stock: keepExistingStock ? existente.stock : (typeof entry.stock === 'number' ? entry.stock : existente.stock),
+          // no pisar stockMinimo a menos que venga explícito en entry
+          stockMinimo: typeof entry.stockMinimo === 'number' ? entry.stockMinimo : existente.stockMinimo,
+          caracteristicas: {
+            ...(existente.caracteristicas || {}),
+            ...(entry.caracteristicas || {})
+          }
+        };
+        const changed = (
+          merged.nombre !== existente.nombre ||
+          merged.categoria !== existente.categoria ||
+          merged.proveedor !== existente.proveedor ||
+          merged.descripcion !== existente.descripcion ||
+          merged.precio !== existente.precio ||
+          merged.stock !== existente.stock ||
+          merged.stockMinimo !== existente.stockMinimo ||
+          JSON.stringify(merged.caracteristicas || {}) !== JSON.stringify(existente.caracteristicas || {})
+        );
+        if (changed) {
+          productos[idx] = merged;
+          updated++;
+        }
+      } else {
+        const nuevo: Producto = {
+          ...entry,
+          id: ++maxId,
+          fechaCreacion: new Date(entry.fechaCreacion || new Date())
+        };
+        productos.push(nuevo);
+        if (codigo) codigoToIndex.set(codigo, productos.length - 1);
+        created++;
+      }
+    }
+
+    // Actualizar subjects una sola vez
+    this.productosSubject.next(productos);
+
+    // Recalcular categorías únicas basadas en productos actuales
+    const categoriasUnicas = Array.from(
+      new Set(productos.map(p => (p.categoria || '').trim()).filter(Boolean))
+    ).sort((a, b) => a.localeCompare(b));
+    this.categoriasSubject.next(categoriasUnicas);
+
+    // Persistir de una vez
+    this.persistirProductos();
+    this.persistirCategorias();
+    this.persistirSqliteKv('productos', this.productosSubject.value);
+    this.persistirSqliteKv('categorias', this.categoriasSubject.value);
+
+    return { created, updated };
   }
 
   actualizarStock(id: number, cantidad: number): void {

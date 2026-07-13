@@ -1,6 +1,8 @@
 {
   "name": "ferreteria-app",
   "version": "1.0.0",
+  "description": "Ferreteria MC - Sistema de gestión",
+  "author": "Matias",
   "main": "electron/main.js",
   "private": true,
   "dependencies": {
@@ -69,8 +71,7 @@
       "buildResources": "assets"
     },
     "win": {
-      "target": "nsis",
-      "sign": false
+      "target": "nsis"
     }
   }
 }

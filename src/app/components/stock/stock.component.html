@@ -96,22 +96,11 @@
   <div class="mass-panel" *ngIf="showMassPrice">
     <div class="card">
       <div class="row between">
-        <div class="titulo">Aumentos/Descuentos masivos</div>
+        <div class="titulo">Ajuste masivo de stock</div>
         <button class="close" (click)="showMassPrice = false">×</button>
       </div>
       <div class="controls">
         <div class="grp">
-          <label>Tipo de acción</label>
-          <select [(ngModel)]="massActionMode">
-            <option value="precio">Aumento/Descuento de precios (%)</option>
-            <option value="stock">Ajuste de stock (cantidad)</option>
-          </select>
-        </div>
-        <div class="grp" *ngIf="massActionMode === 'precio'">
-          <label>Porcentaje</label>
-          <input type="number" [(ngModel)]="porcentaje" placeholder="Ej: 10 ó -5" />
-        </div>
-        <div class="grp" *ngIf="massActionMode === 'stock'">
           <label>Cantidad a sumar/restar</label>
           <input type="number" [(ngModel)]="cantidadStock" placeholder="Ej: 5 ó -3" />
         </div>
@@ -127,7 +116,7 @@
         - Si seleccionás productos en la tabla, se aplica sólo a esos.
         - Si elegís una categoría, se aplica a esa categoría.
         - Si no seleccionás nada, aplica a todos los productos filtrados actualmente.
-        - En "Ajuste de stock" la cantidad puede ser negativa para descontar.
+        - La cantidad puede ser negativa para descontar.
       </div>
       <div class="actions">
         <button class="btn-secondary" (click)="seleccionarTodosVista()">Seleccionar visibles</button>
@@ -199,6 +188,12 @@
           <label>Archivo Excel (*.xlsx)</label>
           <input type="file" accept=".xlsx,.xls" (change)="onArchivoExcelSeleccionado($event)" />
         </div>
+        <div class="row checkbox">
+          <label style="display:flex; gap:8px; align-items:center;">
+            <input type="checkbox" [(ngModel)]="eliminarNoPresentes" />
+            Eliminar del sistema los productos que NO estén en el Excel
+          </label>
+        </div>
         <div class="row">
           <div class="help">Formato esperado de columnas: CODIGO, NOMBRE, CATEGORIA, PRECIO DE COSTO, PORCENTAJE GANANCIA, PROVEEDOR, DESCRIPCION (opcional). El precio final se calcula como costo × (1 + porcentaje/100). El stock se cargará en 0.</div>
         </div>
@@ -216,3 +211,45 @@
     </div>
   </div>
 </div>
+
+<div class="loader-backdrop" *ngIf="loading.visible">
+  <div class="loader-card">
+    <div class="loader-header">
+        <div class="spinner" *ngIf="!loading.done"></div>
+        <div class="success" *ngIf="loading.done">✅</div>
+      <div class="title">{{ loading.done ? 'Finalizado con éxito' : loading.title || 'Cargando...' }}</div>
+      <button class="close" *ngIf="loading.done" (click)="cerrarLoading()">×</button>
+    </div>
+    <div class="loader-body" *ngIf="!loading.done">
+      <div class="dots">
+        <span></span><span></span><span></span>
+      </div>
+      <div class="hint">No cierres la ventana. Puede tardar con muchos productos…</div>
+    </div>
+    <div class="loader-body" *ngIf="loading.done">
+      <div class="summary">
+        <div class="row" *ngIf="loading.summary?.nuevos !== undefined">Nuevos: <b>{{ loading.summary.nuevos }}</b></div>
+        <div class="row" *ngIf="loading.summary?.actualizados !== undefined">Actualizados: <b>{{ loading.summary.actualizados }}</b></div>
+        <div class="row" *ngIf="loading.summary?.modificados !== undefined">Modificados: <b>{{ loading.summary.modificados }}</b></div>
+        <div class="row" *ngIf="loading.summary?.duplicados?.length">
+          Duplicados ({{ loading.summary.duplicados.length }}):
+          <div class="list">{{ loading.summary.duplicados.join(', ') }}</div>
+        </div>
+        <div class="row" *ngIf="loading.summary?.sinPrecio?.length">
+          Sin datos completos: ({{ loading.summary.sinPrecio.length }}):
+          <div class="list">{{ loading.summary.sinPrecio.join(', ') }}</div>
+        </div>
+        <div class="row" *ngIf="loading.summary?.sinCodigoCount">
+          Sin código: <b>{{ loading.summary.sinCodigoCount }}</b>
+        </div>
+        <div class="row" *ngIf="loading.summary?.eliminados">
+          Eliminados: <b>{{ loading.summary.eliminados }}</b>
+        </div>
+      </div>
+      <div class="actions">
+        <button class="btn-primary" (click)="cerrarLoading()">Cerrar</button>
+      </div>
+    </div>
+  </div>
+  <div class="loader-bg"></div>
+ </div>

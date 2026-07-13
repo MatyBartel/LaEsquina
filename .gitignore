@@ -40,3 +40,15 @@ testem.log
 # System files
 .DS_Store
 Thumbs.db
+
+# Builds de Electron
+/dist
+*.exe
+*.msi
+
+# DB local de desarrollo (si copiás datos de prueba)
+*.db
+*.db-journal
+
+# Datos sensibles del negocio
+/backups/
