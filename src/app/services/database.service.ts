@@ -256,11 +256,38 @@ export class DatabaseService {
   }
 
   getProductoByCodigoBarras(codigoBarras: string): Producto | undefined {
-    const code = (codigoBarras || '').trim();
+    const code = this.normalizarCodigoEscaneado(codigoBarras);
     if (!code) return undefined;
     return this.productosSubject.value.find(p =>
-      (p.codigoBarras || '').trim() === code || (p.codigo || '').trim() === code
+      this.codigosEscaneoEquivalentes(code, p.codigoBarras || '') ||
+      this.codigosEscaneoEquivalentes(code, p.codigo || '')
     );
+  }
+
+  productoConCodigoDuplicado(codigo: string, excluirId?: number | null): Producto | undefined {
+    const normalizado = this.normalizarCodigoEscaneado(codigo);
+    if (!normalizado) return undefined;
+    return this.productosSubject.value.find(p => {
+      if (excluirId != null && p.id === excluirId) return false;
+      return (
+        this.codigosEscaneoEquivalentes(normalizado, p.codigoBarras || '') ||
+        this.codigosEscaneoEquivalentes(normalizado, p.codigo || '')
+      );
+    });
+  }
+
+  private normalizarCodigoEscaneado(codigo: string): string {
+    const limpio = (codigo || '').replace(/[\r\n\t]/g, '').trim();
+    const digitos = limpio.replace(/\D/g, '');
+    if (digitos.length >= 4 && /^\d+$/.test(digitos)) return digitos;
+    return limpio.toLowerCase();
+  }
+
+  private codigosEscaneoEquivalentes(a: string, b: string): boolean {
+    const na = this.normalizarCodigoEscaneado(a);
+    const nb = this.normalizarCodigoEscaneado(b);
+    if (!na || !nb) return false;
+    return na === nb;
   }
 
   calcularPrecioVenta(costo: number, porcentaje: number): number {
@@ -706,6 +733,15 @@ export class DatabaseService {
 
   getProductosActuales(): Producto[] {
     return this.productosSubject.value;
+  }
+
+  /** Suma de (precio de costo × stock) para todo el inventario. */
+  getValorStockTotal(): number {
+    return this.productosSubject.value.reduce((acc, p) => {
+      const costo = Number(p.precioCosto) || 0;
+      const stock = Number(p.stock) || 0;
+      return acc + costo * stock;
+    }, 0);
   }
 
   getVentaById(id: number): Venta | undefined {

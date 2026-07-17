@@ -13,6 +13,10 @@
   z-index: 1800;
 }
 
+.modal-scan-backdrop {
+  z-index: 1900;
+}
+
 .modal-producto {
   position: fixed;
   top: 50%;
@@ -180,6 +184,13 @@ textarea {
   flex-shrink: 0;
 }
 
+.btn-scan img {
+  width: 22px;
+  height: 22px;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+}
+
 .hint {
   margin-top: 4px;
   color: #7f8c8d;
@@ -232,6 +243,98 @@ textarea {
 
 .modal-proveedores {
   z-index: 1801;
+}
+
+.modal-escanner {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: min(420px, calc(100vw - 32px));
+  background: #fff;
+  border-radius: 14px;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28);
+  z-index: 1901;
+  overflow: hidden;
+}
+
+.modal-body-escanner {
+  padding: 20px 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.scan-visual {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 10px;
+  padding: 18px 16px;
+  border-radius: 12px;
+  background: linear-gradient(180deg, #4a8798 0%, #5ba3b5 100%);
+  color: #fff;
+}
+
+.scan-icon {
+  width: 72px;
+  height: 72px;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+  animation: scanPulse 1.8s ease-in-out infinite;
+}
+
+@keyframes scanPulse {
+  0%, 100% { opacity: 0.85; transform: scale(1); }
+  50% { opacity: 1; transform: scale(1.04); }
+}
+
+.scan-instructions {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.scan-hint {
+  margin: 0;
+  font-size: 0.82rem;
+  opacity: 0.9;
+  line-height: 1.35;
+}
+
+.scan-label {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--brand-text);
+}
+
+.scan-input {
+  width: 100%;
+  padding: 11px 12px;
+  border: 2px solid var(--brand-primary);
+  border-radius: 10px;
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+  text-align: center;
+  background: #f8fcfd;
+}
+
+.scan-input:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(91, 163, 181, 0.25);
+}
+
+.scan-preview {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #7f8c8d;
+  text-align: center;
+}
+
+.scan-preview strong {
+  color: var(--brand-primary-dark);
+  word-break: break-all;
 }
 
 .modal-body-cats { padding: 16px 18px; }

@@ -1,5 +1,41 @@
 .ventas-container { padding: 20px; }
-h1 { color: var(--heading-color); margin-bottom: 10px; text-align: center; font-size: 40px;}
+
+.ventas-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+h1 { color: var(--heading-color); margin: 0; text-align: center; font-size: 40px; }
+
+.scan-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid #dce6ed;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.06);
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--brand-primary-dark);
+}
+
+.scan-status img {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  filter: brightness(0) saturate(100%) invert(42%) sepia(18%) saturate(1018%) hue-rotate(152deg) brightness(92%) contrast(88%);
+}
+
+.scan-status.pausado {
+  opacity: 0.75;
+  color: #7f8c8d;
+}
 
 .layout { display: grid; grid-template-columns: 1fr 1.2fr 0.9fr; gap: 16px; }
 

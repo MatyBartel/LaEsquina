@@ -451,7 +451,7 @@ ipcMain.handle('escpos:print-ticket', async (_event, payload) => {
     const printer = new escpos.Printer(device, { encoding: 'CP858' });
 
     const {
-      negocio = { nombre: 'Polirubro La Esquina' },
+      negocio = { nombre: 'La Esquina - Polirubro' },
       fecha = '',
       numero = '',
       vendedor = '',

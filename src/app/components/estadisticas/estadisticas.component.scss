@@ -26,20 +26,25 @@ h1 {
 .periodo-card select { padding: 6px 8px; border: 1px solid #dfe6e9; border-radius: 8px; background: #fff; }
 .btn-recalcular { display:none; }
 
-.grid-cards { display: grid; grid-template-columns: repeat(12, 1fr); gap: 6px; align-items: start; align-content: start; grid-template-rows: 230px 360px; grid-auto-rows: 230px; height: calc(100vh - 200px); overflow: hidden; }
-.grid-cards > .card:nth-child(n+5) { height: 360px; }
-.w-3 { grid-column: span 3; }
-.w-4 { grid-column: span 4; }
-.w-6 { grid-column: span 6; }
-.w-5 { grid-column: span 5; }
-.w-2 { grid-column: span 2; }
+.grid-cards {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  grid-template-rows: 230px 360px;
+  gap: 6px;
+  height: calc(100vh - 200px);
+  overflow: hidden;
+}
+
+.area-ventas    { grid-column: 1 / 4;  grid-row: 1; }
+.area-producto  { grid-column: 4 / 7;  grid-row: 1; }
+.area-chart     { grid-column: 7 / 11; grid-row: 1; }
+.area-horarios  { grid-column: 11 / 13; grid-row: 1; }
+.area-stock     { grid-column: 1 / 3;  grid-row: 2; }
+.area-pie       { grid-column: 3 / 6;  grid-row: 2; }
+.area-metodos   { grid-column: 6 / 8;  grid-row: 2; }
+.area-listas    { grid-column: 8 / 13; grid-row: 2; }
 
 .no-data .card.full { max-width: 800px; margin: 0 auto; }
-
-.card { padding: 8px; }
-.bars { height: 130px; }
-.bar-col { height: 100px; }
-.pie { width: 300px; height: 300px; }
 
 .card {
   background: var(--surface);
@@ -50,39 +55,159 @@ h1 {
   text-align: left;
   display: flex;
   flex-direction: column;
-  height: 230px;
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
 }
 
-.card-title { color: var(--brand-primary-dark); font-weight: 700; margin-bottom: 4px; font-size: 1.02rem; }
+.card-title { color: var(--brand-primary-dark); font-weight: 700; margin-bottom: 4px; font-size: 0.95rem; flex-shrink: 0; }
 .card-value { color: var(--brand-primary-dark); font-size: 2rem; font-weight: 800; line-height: 1.1; }
-.card-sub { color: #7f8c8d; margin-top: 2px; font-size: 0.88rem; }
+.card-sub { color: #7f8c8d; margin-top: 2px; font-size: 0.82rem; }
 
-.span-2 { grid-column: span 2; }
+.card-extra {
+  margin-top: auto;
+  padding-top: 6px;
+  border-top: 1px solid #ecf0f1;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
 
-.bars { display: grid; grid-template-columns: repeat(7, 1fr); gap: 8px; align-items: end; height: 130px; margin-top: 6px; }
-.bar { display: flex; flex-direction: column; align-items: center; gap: 6px; }
-.bar-col { width: 20px; height: 100px; background: #f0f3f5; border-radius: 6px; overflow: hidden; display: flex; align-items: flex-end; }
-.bar-fill { width: 100%; background: linear-gradient(180deg,var(--brand-primary-dark),var(--brand-primary-dark)); border-radius: 6px 6px 0 0; }
-.bar-label { color: var(--brand-primary-dark); font-weight: 600; }
-.bar-total { color: #7f8c8d; font-size: 0.85rem; transform: translateY(-6px); }
+.extra-label {
+  color: #7f8c8d;
+  font-size: 0.82rem;
+  font-weight: 600;
+}
 
-.picos { display: grid; gap: 6px; flex: 1; overflow: hidden; max-height: 130px; }
-.pico { background: #f7f9fb; border: 1px solid #ecf0f1; border-radius: 8px; padding: 4px 8px; min-height: 40px; display: flex; align-items: center; }
+.extra-value {
+  color: #c0392b;
+  font-size: 1.1rem;
+  font-weight: 800;
+}
 
-.pie { width: 280px; height: 280px; border-radius: 50%; margin: 6px auto 6px; box-shadow: inset 0 0 0 10px #fff; }
-.echart { width: 100%; height: 200px; }
-.pie-echart { height: 260px; }
-.leyenda { display: grid; gap: 6px; }
-.leyenda .item { display: grid; grid-template-columns: 14px 1fr auto; align-items: center; gap: 8px; }
+.producto-nombre {
+  font-size: 1.35rem;
+  line-height: 1.2;
+}
+
+.card-body-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 4px;
+  min-height: 0;
+}
+
+.stock-value {
+  font-size: 1.55rem;
+}
+
+.picos {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+}
+
+.picos.stretch .pico {
+  flex: 1;
+}
+
+.pico {
+  background: #f7f9fb;
+  border: 1px solid #ecf0f1;
+  border-radius: 8px;
+  padding: 4px 8px;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  font-size: 0.84rem;
+}
+
+.echart { width: 100%; flex: 1; min-height: 0; }
+.pie-echart { flex: 1; min-height: 140px; max-height: 220px; }
+
+.leyenda {
+  display: grid;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.leyenda .item {
+  display: grid;
+  grid-template-columns: 14px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.82rem;
+}
+
 .leyenda .item .c { width: 14px; height: 14px; border-radius: 3px; display: inline-block; }
 
-.top5 { display: grid; gap: 6px; flex: 1; overflow: auto; max-height: 220px; padding-right: 4px; }
-.top5 .row { display: flex; justify-content: space-between; border: 1px solid #ecf0f1; border-radius: 8px; padding: 4px 8px; }
-.top5 .n { color: var(--brand-primary-dark); }
-.top5 .v { font-weight: 700; }
+.metodos,
+.lista {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-height: 0;
+}
 
-.metodos { display: grid; gap: 6px; margin-top: 4px; flex: 1; overflow: auto; max-height: 220px; padding-right: 4px; }
-.metodos .metodo { display: flex; justify-content: space-between; border: 1px solid #ecf0f1; border-radius: 8px; padding: 4px 8px; }
+.metodos.stretch .metodo,
+.lista.stretch .row {
+  flex: 1;
+  min-height: 34px;
+}
+
+.metodo,
+.lista .row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid #ecf0f1;
+  border-radius: 8px;
+  padding: 4px 8px;
+  font-size: 0.84rem;
+}
+
+.lista .n,
+.metodo .m {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lista .v,
+.metodo .t {
+  flex-shrink: 0;
+  font-weight: 700;
+  font-size: 0.8rem;
+}
+
+.dual-panel {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  flex: 1;
+  min-height: 0;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+.panel + .panel {
+  border-left: 1px solid #ecf0f1;
+  padding-left: 8px;
+}
 
 :host ::ng-deep .main-content {
   padding: 0 !important;

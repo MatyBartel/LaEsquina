@@ -18,10 +18,13 @@ export class EstadisticasComponent implements OnInit, AfterViewInit, OnDestroy {
   stockProductoMasVendido = 0;
   productoMasVendidoId?: number;
   totalMes = 0;
+  totalGastosMes = 0;
+  valorStockTotal = 0;
   unidadesVendidasMes = 0;
   ticketPromedio = 0;
-  ventasPorDiaSemana: { dia: string; count: number }[] = [];
-  maxVentasDiaSemana = 1;
+  ingresosPorDiaSemana: { dia: string; total: number }[] = [];
+  maxIngresoDiaSemana = 1;
+  mejorDiaSemana = '';
   pagosMes: { metodo: string; total: number }[] = [];
   pagosUso: { metodo: string; count: number; percent: number }[] = [];
   horasConteo: number[] = Array(24).fill(0);
@@ -65,6 +68,7 @@ export class EstadisticasComponent implements OnInit, AfterViewInit, OnDestroy {
   mesSeleccionado = new Date().getMonth();
   anioSeleccionado = new Date().getFullYear();
   anios: number[] = [];
+  private subs: Array<{ unsubscribe(): void }> = [];
 
   constructor(private db: DatabaseService) {}
 
@@ -72,6 +76,11 @@ export class EstadisticasComponent implements OnInit, AfterViewInit, OnDestroy {
     const ahora = new Date();
     const base = ahora.getFullYear();
     this.anios = Array.from({ length: 6 }, (_, i) => base - i);
+    this.subs.push(
+      this.db.getVentas().subscribe(() => this.recalcular()),
+      this.db.getGastos().subscribe(() => this.recalcular()),
+      this.db.getProductos().subscribe(() => this.recalcular()),
+    );
     this.recalcular();
   }
 
@@ -86,6 +95,7 @@ export class EstadisticasComponent implements OnInit, AfterViewInit, OnDestroy {
 
   ngOnDestroy(): void {
     window.removeEventListener('resize', this.onResize);
+    this.subs.forEach(s => s.unsubscribe());
     this.disposeCharts();
   }
 
@@ -94,6 +104,10 @@ export class EstadisticasComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private recalcular(): void {
+    const { inicio, fin } = this.db.getInicioFinMes(this.anioSeleccionado, this.mesSeleccionado);
+    this.totalGastosMes = this.db.getTotalGastosEnRango(inicio, fin);
+    this.valorStockTotal = this.db.getValorStockTotal();
+
     const ventas = this.db.getVentasActuales();
     this.ventasMes = ventas.filter(v => {
       const f = new Date(v.fecha);
@@ -102,6 +116,8 @@ export class EstadisticasComponent implements OnInit, AfterViewInit, OnDestroy {
     this.cantidadVentasMes = this.ventasMes.length;
     this.totalMes = this.ventasMes.reduce((acc, v) => acc + v.total, 0);
 
+    this.calcularIngresosPorDiaSemana();
+
     if (this.ventasMes.length === 0) {
       this.unidadesVendidasMes = 0;
       this.ticketPromedio = 0;
@@ -109,15 +125,19 @@ export class EstadisticasComponent implements OnInit, AfterViewInit, OnDestroy {
       this.cantidadProductoMasVendido = 0;
       this.stockProductoMasVendido = 0;
       this.productoMasVendidoId = undefined;
-      this.ventasPorDiaSemana = [];
-      this.maxVentasDiaSemana = 1;
       this.pagosMes = [];
       this.pagosUso = [];
       this.horasConteo = Array(24).fill(0);
       this.horasPicoTop = [];
       this.topProductosMes = [];
       this.ventasPorVendedor = [];
-      this.disposeCharts();
+      this.pieOptions = this.buildPieOptions();
+      this.areaOptions = this.buildAreaOptions();
+      if (this.echartsLib && this.viewReady) {
+        setTimeout(() => this.initOrUpdateCharts());
+      } else {
+        this.disposeCharts();
+      }
       return;
     }
     this.unidadesVendidasMes = this.ventasMes.reduce((acc, v) => acc + v.productos.reduce((a, p) => a + Number(p.cantidad || 0), 0), 0);
@@ -151,15 +171,6 @@ export class EstadisticasComponent implements OnInit, AfterViewInit, OnDestroy {
       this.productoMasVendidoId = undefined;
       this.topProductosMes = [];
     }
-
-    const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
-    const counts: number[] = Array(7).fill(0);
-    for (const v of this.ventasMes) {
-      const d = v.fecha.getDay();
-      counts[d] += 1;
-    }
-    this.maxVentasDiaSemana = Math.max(1, ...counts);
-    this.ventasPorDiaSemana = dias.map((d, i) => ({ dia: d, count: counts[i] }));
 
     const pagosMap = new Map<string, number>();
     const pagosCountMap = new Map<string, number>();
@@ -207,6 +218,18 @@ export class EstadisticasComponent implements OnInit, AfterViewInit, OnDestroy {
     }
   }
 
+  private calcularIngresosPorDiaSemana(): void {
+    const dias = ['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'];
+    const totals: number[] = Array(7).fill(0);
+    for (const v of this.ventasMes) {
+      totals[new Date(v.fecha).getDay()] += Number(v.total || 0);
+    }
+    this.maxIngresoDiaSemana = Math.max(1, ...totals);
+    this.ingresosPorDiaSemana = dias.map((d, i) => ({ dia: d, total: Number(totals[i].toFixed(2)) }));
+    const mejor = this.ingresosPorDiaSemana.reduce((a, b) => (b.total > a.total ? b : a), { dia: '-', total: 0 });
+    this.mejorDiaSemana = mejor.total > 0 ? mejor.dia : '';
+  }
+
   private buildPieOptions(): any {
     const data = this.pagosUso.map(p => ({ value: p.percent, name: p.metodo }));
     return {
@@ -227,12 +250,24 @@ export class EstadisticasComponent implements OnInit, AfterViewInit, OnDestroy {
   }
 
   private buildAreaOptions(): any {
-    const dias = this.ventasPorDiaSemana.map(d => d.dia);
-    const valores = this.ventasPorDiaSemana.map(d => d.count);
+    const dias = this.ingresosPorDiaSemana.map(d => d.dia);
+    const valores = this.ingresosPorDiaSemana.map(d => d.total);
     return {
-      tooltip: { trigger: 'axis' },
+      tooltip: {
+        trigger: 'axis',
+        formatter: (params: any) => {
+          const p = Array.isArray(params) ? params[0] : params;
+          const val = Number(p?.value || 0);
+          return `${p?.axisValue || ''}<br/>Ingresos: $${val.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+        }
+      },
       xAxis: { type: 'category', data: dias, boundaryGap: false },
-      yAxis: { type: 'value' },
+      yAxis: {
+        type: 'value',
+        axisLabel: {
+          formatter: (v: number) => `$${Math.round(v).toLocaleString('es-AR')}`
+        }
+      },
       grid: { left: 8, right: 12, top: 16, bottom: 8, containLabel: true },
       series: [
         {

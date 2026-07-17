@@ -1,8 +1,9 @@
-import { Component, OnDestroy, OnInit } from '@angular/core';
+import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { IconComponent } from '../icon/icon.component';
 import { FormsModule } from '@angular/forms';
 import { DatabaseService, Producto, Venta, VentaProducto, PagoVenta } from '../../services/database.service';
+import { BarcodeScannerService } from '../../services/barcode-scanner.service';
 import { Subscription } from 'rxjs';
 import { ToastService } from '../../services/toast.service';
 import { BRAND } from '../../config/brand.config';
@@ -44,12 +45,17 @@ export class VentasComponent implements OnInit, OnDestroy {
     this.totalManualStr = digits;
   }
   editTotalManual = false;
+  ultimoEscaneo = '';
+  escaneoActivo = false;
+
+  private db = inject(DatabaseService);
+  private toast = inject(ToastService);
+  private barcodeScanner = inject(BarcodeScannerService);
+
   toggleEditTotalManual(): void { this.editTotalManual = !this.editTotalManual; }
   startEditTotal(): void { this.editTotalManual = true; }
   finishEditTotal(): void { this.editTotalManual = false; }
   clearTotalManual(): void { this.totalManualStr = ''; this.editTotalManual = false; }
-
-  constructor(private db: DatabaseService, private toast: ToastService) {}
 
   ngOnInit(): void {
     this.sub = this.db.getProductos().subscribe(items => (this.productos = items));
@@ -60,16 +66,84 @@ export class VentasComponent implements OnInit, OnDestroy {
       }
     });
     this.pagos = [{ metodo: 'Efectivo', monto: 0, montoStr: '' }];
+    this.iniciarCapturaEscanner();
   }
 
   ngOnDestroy(): void {
     this.sub?.unsubscribe();
+    this.barcodeScanner.stopCapture();
+    this.escaneoActivo = false;
+  }
+
+  private iniciarCapturaEscanner(): void {
+    this.barcodeScanner.startCapture({
+      onScan: (codigo) => this.procesarCodigoBarras(codigo),
+      isPaused: () => this.escaneoPausado(),
+    });
+    this.escaneoActivo = true;
+  }
+
+  get escaneoEnPausa(): boolean {
+    return this.mostrarResumenVenta || !!this.ventaAEliminar || this.entradaManualEnVentas();
+  }
+
+  private escaneoPausado(): boolean {
+    return this.escaneoEnPausa;
+  }
+
+  /** True si el foco está en un campo donde el usuario escribe a mano. */
+  private entradaManualEnVentas(): boolean {
+    const el = document.activeElement as HTMLElement | null;
+    if (!el?.closest('.ventas-container')) return false;
+    return this.esCampoEditableManual(el);
+  }
+
+  private esCampoEditableManual(el: HTMLElement): boolean {
+    const tag = el.tagName;
+    if (tag === 'TEXTAREA') return true;
+    if (tag === 'INPUT') {
+      const type = ((el as HTMLInputElement).type || 'text').toLowerCase();
+      return !['checkbox', 'radio', 'button', 'submit', 'reset', 'date', 'hidden', 'file'].includes(type);
+    }
+    return el.isContentEditable;
+  }
+
+  private procesarCodigoBarras(codigo: string): void {
+    const code = this.barcodeScanner.codigoParaBusqueda(codigo);
+    const producto = this.db.getProductoByCodigoBarras(code);
+    if (!producto) {
+      this.ultimoEscaneo = codigo;
+      this.toast.show(`Producto no encontrado (${codigo})`, 'warning');
+      return;
+    }
+
+    const agregado = this.agregarAlCarrito(producto, { silencioso: true });
+    if (agregado) {
+      this.ultimoEscaneo = codigo;
+      this.filtro = '';
+      const enCarrito = this.carrito.find(vp => vp.productoId === producto.id);
+      const cantidad = enCarrito?.cantidad || 1;
+      this.toast.show(
+        cantidad > 1 ? `${producto.nombre} (x${cantidad})` : `${producto.nombre} agregado al carrito`,
+        'success'
+      );
+      return;
+    }
+
+    this.ultimoEscaneo = codigo;
+    if ((producto.stock || 0) <= 0) {
+      this.toast.show(`${producto.nombre}: sin stock`, 'warning');
+    } else {
+      this.toast.show(`${producto.nombre}: stock insuficiente`, 'warning');
+    }
   }
 
   get productosFiltrados(): Producto[] {
     const t = (this.filtro || '').toLowerCase();
     return this.productos.filter(p =>
-      p.nombre.toLowerCase().includes(t) || p.codigo.toLowerCase().includes(t)
+      p.nombre.toLowerCase().includes(t) ||
+      p.codigo.toLowerCase().includes(t) ||
+      (p.codigoBarras || '').toLowerCase().includes(t)
     );
   }
 
@@ -77,8 +151,7 @@ export class VentasComponent implements OnInit, OnDestroy {
   pageCatalogo = 1;
   pageSizeCatalogo = 20;
   get productosFiltradosTotal(): number {
-    const t = (this.filtro || '').toLowerCase();
-    return this.productos.filter(p => p.nombre.toLowerCase().includes(t) || p.codigo.toLowerCase().includes(t)).length;
+    return this.productosFiltrados.length;
   }
   get productosCatalogoPaginados(): Producto[] {
     const arr = this.productosFiltrados;
@@ -121,17 +194,16 @@ export class VentasComponent implements OnInit, OnDestroy {
     this.pageCarrito = Math.max(1, Math.min(max, Math.trunc(p)));
   }
 
-  agregarAlCarrito(p: Producto): void {
-    if ((p.stock || 0) <= 0) {
-      this.toast.show('Sin stock disponible para este producto', 'warning');
-      return;
+  agregarAlCarrito(p: Producto, opts?: { silencioso?: boolean }): boolean {
+    const disponible = this.stockDisponible(p.id!);
+    if (disponible < 1) {
+      if (!opts?.silencioso) {
+        this.toast.show('Sin stock disponible para este producto', 'warning');
+      }
+      return false;
     }
     const existente = this.carrito.find(vp => vp.productoId === p.id);
     if (existente) {
-      if (existente.cantidad + 1 > (p.stock || 0)) {
-        this.toast.show('Stock insuficiente', 'warning');
-        return;
-      }
       existente.cantidad += 1;
       existente.subtotal = existente.cantidad * existente.precioUnitario;
       (existente as any).editCantidad = String(existente.cantidad);
@@ -146,6 +218,14 @@ export class VentasComponent implements OnInit, OnDestroy {
         editCantidad: '1' as any,
       } as any);
     }
+    return true;
+  }
+
+  private stockDisponible(productoId: number): number {
+    const prod = this.db.getProductoById(productoId);
+    if (!prod) return 0;
+    const enCarrito = this.carrito.find(vp => vp.productoId === productoId)?.cantidad || 0;
+    return Math.max(0, (prod.stock || 0) - enCarrito);
   }
 
   quitarDelCarrito(vp: VentaProductoExt): void {
@@ -155,8 +235,11 @@ export class VentasComponent implements OnInit, OnDestroy {
   actualizarCantidad(vp: VentaProductoExt): void {
     if (vp.cantidad <= 0) vp.cantidad = 0.001;
     const prod = this.db.getProductoById(vp.productoId);
-    if (prod && vp.cantidad > (prod.stock || 0)) {
-      vp.cantidad = prod.stock;
+    const enCarrito = vp.cantidad;
+    const maxPermitido = prod ? (prod.stock || 0) : 0;
+    if (prod && enCarrito > maxPermitido) {
+      vp.cantidad = maxPermitido;
+      vp.editCantidad = String(maxPermitido);
       this.toast.show('Se ajustó a stock disponible', 'info');
     }
     // Redondear a pesos enteros

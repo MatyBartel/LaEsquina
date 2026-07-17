@@ -25,7 +25,19 @@
 
       <div class="form-group">
         <label for="codigoBarras">Código de barras</label>
-        <input id="codigoBarras" name="codigoBarras" [(ngModel)]="codigoBarras" placeholder="Opcional" />
+        <div class="categoria-row">
+          <input
+            id="codigoBarras"
+            name="codigoBarras"
+            [(ngModel)]="codigoBarras"
+            placeholder="Opcional"
+            (blur)="validarCodigoBarrasDuplicado()"
+            (ngModelChange)="onCodigoBarrasChange($event)"
+          />
+          <button type="button" class="btn-icon btn-scan" title="Escanear código de barras" (click)="abrirModalEscanner()">
+            <img src="logos/barcode.png" alt="" aria-hidden="true" />
+          </button>
+        </div>
       </div>
 
       <div class="form-group span-full">
@@ -198,5 +210,47 @@
 
   <div class="modal-footer">
     <button type="button" class="btn-light" (click)="cerrarModalProveedores()">Cerrar</button>
+  </div>
+</div>
+
+<div class="modal-backdrop modal-scan-backdrop" *ngIf="mostrarModalEscanner" (click)="cerrarModalEscanner()"></div>
+<div class="modal-escanner" *ngIf="mostrarModalEscanner" role="dialog" aria-labelledby="modalEscannerTitulo">
+  <div class="modal-header">
+    <h2 id="modalEscannerTitulo">Escaneá tu producto</h2>
+    <button type="button" class="btn-close" title="Cerrar" (click)="cerrarModalEscanner()">
+      <app-icon name="x" [size]="20"></app-icon>
+    </button>
+  </div>
+
+  <div class="modal-body-escanner">
+    <div class="scan-visual">
+      <img src="logos/barcode.png" alt="" class="scan-icon" aria-hidden="true" />
+      <p class="scan-instructions">Apuntá el lector al código de barras del producto.</p>
+      <p class="scan-hint">El lector USB escribe el código automáticamente. También podés tipearlo y presionar Enter.</p>
+    </div>
+
+    <label class="scan-label" for="inputEscaneoBarras">Código detectado</label>
+    <input
+      id="inputEscaneoBarras"
+      class="scan-input"
+      [(ngModel)]="escaneoTemporal"
+      name="escaneoTemporal"
+      autocomplete="off"
+      spellcheck="false"
+      placeholder="Esperando lectura..."
+      (input)="onEscaneoInput()"
+      (keydown.enter)="onEscaneoEnter($event)"
+    />
+
+    <p class="scan-preview" *ngIf="escaneoTemporal.trim()">
+      Leyendo: <strong>{{ escaneoTemporal.trim() }}</strong>
+    </p>
+  </div>
+
+  <div class="modal-footer">
+    <button type="button" class="btn-light" (click)="cerrarModalEscanner()">Cancelar</button>
+    <button type="button" class="btn-primary" (click)="procesarEscaneo()" [disabled]="!escaneoTemporal.trim()">
+      Usar código
+    </button>
   </div>
 </div>

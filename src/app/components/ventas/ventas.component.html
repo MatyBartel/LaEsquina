@@ -1,11 +1,17 @@
 <div class="ventas-container">
-  <h1>Gestión de Ventas</h1>
+  <div class="ventas-header">
+    <h1>Gestión de Ventas</h1>
+    <div class="scan-status" [class.pausado]="escaneoEnPausa" *ngIf="escaneoActivo">
+      <img src="logos/barcode.png" alt="" aria-hidden="true" />
+      <span>{{ escaneoEnPausa ? 'Escáner en pausa' : 'Escáner listo' }}</span>
+    </div>
+  </div>
   <div class="layout">
     <section class="catalogo">
       <div class="busqueda">
         <div class="search">
           <span class="icon"><app-icon name="search" [size]="18" color="#7f8c8d"></app-icon></span>
-          <input type="text" placeholder="Buscar por nombre o código" [(ngModel)]="filtro" />
+          <input type="text" placeholder="Buscar por nombre, código o barras" [(ngModel)]="filtro" />
           <button class="clear" *ngIf="filtro" (click)="filtro=''">×</button>
         </div>
       </div>
@@ -47,7 +53,7 @@
         <tbody>
           <tr *ngFor="let vp of carritoPaginado">
             <td>{{ vp.nombre }}</td>
-            <td><input type="text" inputmode="decimal" pattern="[0-9.,]*" [(ngModel)]="vp.editCantidad" (ngModelChange)="onCantidadChange(vp, $event)" (blur)="onCantidadBlur(vp)" /></td>
+            <td><input class="cantidad-input" type="text" inputmode="decimal" pattern="[0-9.,]*" [(ngModel)]="vp.editCantidad" (ngModelChange)="onCantidadChange(vp, $event)" (blur)="onCantidadBlur(vp)" /></td>
             <td>${{ vp.precioUnitario | number:'1.0-0' }}</td>
             <td>${{ vp.subtotal | number:'1.0-0' }}</td>
             <td><button class="danger" (click)="quitarDelCarrito(vp)">Quitar</button></td>

@@ -2,6 +2,7 @@ import { Component, EventEmitter, Input, OnChanges, OnDestroy, OnInit, Output, S
 import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DatabaseService, Producto, TipoVenta } from '../../services/database.service';
+import { BarcodeScannerService } from '../../services/barcode-scanner.service';
 import { ToastService } from '../../services/toast.service';
 import { IconComponent } from '../icon/icon.component';
 import { Subscription } from 'rxjs';
@@ -20,6 +21,7 @@ export class ProductoFormComponent implements OnInit, OnChanges, OnDestroy {
 
   db = inject(DatabaseService);
   private toast = inject(ToastService);
+  private barcodeScanner = inject(BarcodeScannerService);
 
   readonly tiposVenta: { value: TipoVenta; label: string }[] = [
     { value: 'unidad', label: 'Por unidad' },
@@ -33,6 +35,8 @@ export class ProductoFormComponent implements OnInit, OnChanges, OnDestroy {
   nuevoProveedorNombre = '';
   mostrarModalCategorias = false;
   mostrarModalProveedores = false;
+  mostrarModalEscanner = false;
+  escaneoTemporal = '';
 
   codigo = '';
   codigoBarras = '';
@@ -50,6 +54,8 @@ export class ProductoFormComponent implements OnInit, OnChanges, OnDestroy {
   private categoriasSub?: Subscription;
   private proveedoresSub?: Subscription;
   private recalculando = false;
+  private escaneoTimer?: ReturnType<typeof setTimeout>;
+  private codigoBarrasTimer?: ReturnType<typeof setTimeout>;
 
   constructor() {
     this.categoriasSub = this.db.getCategorias().subscribe(cats => {
@@ -73,6 +79,8 @@ export class ProductoFormComponent implements OnInit, OnChanges, OnDestroy {
   ngOnDestroy(): void {
     this.categoriasSub?.unsubscribe();
     this.proveedoresSub?.unsubscribe();
+    clearTimeout(this.escaneoTimer);
+    clearTimeout(this.codigoBarrasTimer);
   }
 
   get categoriasParaSelect(): string[] {
@@ -112,6 +120,7 @@ export class ProductoFormComponent implements OnInit, OnChanges, OnDestroy {
   private inicializarFormulario(): void {
     this.mostrarModalCategorias = false;
     this.mostrarModalProveedores = false;
+    this.cerrarModalEscanner();
     if (this.productoId) {
       const p = this.db.getProductoById(this.productoId);
       if (!p) {
@@ -285,6 +294,78 @@ export class ProductoFormComponent implements OnInit, OnChanges, OnDestroy {
     this.toast.show('Proveedor eliminado de la lista', 'info');
   }
 
+  abrirModalEscanner(): void {
+    this.escaneoTemporal = this.codigoBarras || '';
+    this.mostrarModalEscanner = true;
+    setTimeout(() => {
+      const input = document.getElementById('inputEscaneoBarras') as HTMLInputElement | null;
+      input?.focus();
+      input?.select();
+    }, 80);
+  }
+
+  cerrarModalEscanner(): void {
+    this.mostrarModalEscanner = false;
+    this.escaneoTemporal = '';
+    clearTimeout(this.escaneoTimer);
+  }
+
+  onEscaneoInput(): void {
+    clearTimeout(this.escaneoTimer);
+    this.escaneoTimer = setTimeout(() => this.procesarEscaneo(true), 140);
+  }
+
+  onEscaneoEnter(event: Event): void {
+    event.preventDefault();
+    clearTimeout(this.escaneoTimer);
+    this.procesarEscaneo(false);
+  }
+
+  procesarEscaneo(soloAuto = false): void {
+    const code = this.barcodeScanner.codigoParaBusqueda(this.escaneoTemporal);
+    if (!code) return;
+
+    if (!this.barcodeScanner.esCodigoValido(code)) {
+      if (!soloAuto) {
+        this.toast.show('El código leído no parece válido.', 'warning');
+      }
+      return;
+    }
+
+    if (this.esCodigoBarrasDuplicado(code)) {
+      return;
+    }
+
+    this.codigoBarras = code;
+    this.cerrarModalEscanner();
+    this.toast.show(`Código leído: ${code}`, 'success');
+  }
+
+  onCodigoBarrasChange(valor: string): void {
+    clearTimeout(this.codigoBarrasTimer);
+    const code = this.barcodeScanner.codigoParaBusqueda(valor);
+    if (!code || code.length < 4) return;
+    this.codigoBarrasTimer = setTimeout(() => this.validarCodigoBarrasDuplicado(), 350);
+  }
+
+  validarCodigoBarrasDuplicado(): boolean {
+    const barras = this.barcodeScanner.codigoParaBusqueda(this.codigoBarras);
+    if (!barras) return true;
+    return !this.esCodigoBarrasDuplicado(barras);
+  }
+
+  private esCodigoBarrasDuplicado(code: string): boolean {
+    const normalizado = this.barcodeScanner.codigoParaBusqueda(code);
+    const duplicado = this.db.productoConCodigoDuplicado(normalizado, this.productoId);
+    if (!duplicado) return false;
+    this.toast.show(`Ya existe un producto con ese código (${duplicado.nombre}).`, 'error');
+    if (this.barcodeScanner.codigosEquivalentes(this.codigoBarras, normalizado)) {
+      this.codigoBarras = '';
+    }
+    this.escaneoTemporal = '';
+    return true;
+  }
+
   guardar(): void {
     if (!this.nombre?.trim() || !this.categoria?.trim()) {
       this.toast.show('Completá nombre y categoría.', 'error');
@@ -304,12 +385,8 @@ export class ProductoFormComponent implements OnInit, OnChanges, OnDestroy {
     }
 
     const barras = this.codigoBarras.trim();
-    if (barras) {
-      const duplicado = this.db.getProductoByCodigoBarras(barras);
-      if (duplicado && duplicado.id !== this.productoId) {
-        this.toast.show('Ya existe un producto con ese código de barras.', 'error');
-        return;
-      }
+    if (barras && this.esCodigoBarrasDuplicado(barras)) {
+      return;
     }
 
     const producto: Producto = {
