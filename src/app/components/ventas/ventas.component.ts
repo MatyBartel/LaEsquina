@@ -772,30 +772,19 @@ export class VentasComponent implements OnInit, OnDestroy {
       const fechaStr = `${two(fecha.getDate())}/${two(fecha.getMonth()+1)}/${fecha.getFullYear()} ${two(fecha.getHours())}:${two(fecha.getMinutes())}`;
       // Preparar ítems ajustando subtotales si hay totalManual para que sumen al total deseado
       const baseItems = (venta.productos||[]).map((p:any)=>({ cantidad: p.cantidad, detalle: p.nombre, precio: p.precioUnitario, subtotal: Math.round(Number(p.subtotal)) }));
-      let itemsAImprimir = baseItems;
-      const totalDeseado = Math.max(0, Math.round(Number((venta as any).totalManual || venta.total || 0)));
-      const sumaActual = baseItems.reduce((acc,it)=>acc+Math.round(Number(it.subtotal||0)),0);
-      if (totalDeseado > 0 && Math.abs(totalDeseado - sumaActual) > 0) {
-        const diff = totalDeseado - sumaActual;
-        const n = baseItems.length || 1;
-        const porItem = Math.trunc(diff / n);
-        const resto = diff - porItem * n;
-        itemsAImprimir = baseItems.map((it, idx) => ({
-          ...it,
-          subtotal: Math.max(0, Math.round(Number(it.subtotal || 0) + porItem + (idx < Math.abs(resto) ? Math.sign(resto) : 0)))
-        }));
-      }
+      const subtotalSinDescuento = baseItems.reduce((acc, it) => acc + Math.round(Number(it.subtotal || 0)), 0);
       const payload = {
         negocio: { nombre: BRAND.nombre },
         fecha: fechaStr,
         numero: venta.numeroTicket,
         vendedor: venta.vendedor,
-        items: itemsAImprimir,
-        total: totalDeseado > 0 ? totalDeseado : venta.total,
+        items: baseItems,
+        subtotalSinDescuento,
+        total: Math.max(0, Math.round(Number(venta.total || 0))),
         redondeo: Number((venta as any).redondeo || 0),
         descuentoPct: Number(venta.descuentoPct || 0),
         descuentoMonto: Number(venta.descuentoMonto || 0),
-        aplicarRedondeo: totalDeseado > 0 ? false : (Number((venta as any).redondeo || 0) > 0)
+        aplicarRedondeo: Number((venta as any).totalManual || 0) > 0 ? false : (Number((venta as any).redondeo || 0) > 0)
       };
       this.toast.show('Enviando a impresora térmica...', 'info');
       const res = await api.escposPrint(payload);

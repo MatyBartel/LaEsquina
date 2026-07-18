@@ -456,6 +456,7 @@ ipcMain.handle('escpos:print-ticket', async (_event, payload) => {
       numero = '',
       vendedor = '',
       items = [], // { cantidad, detalle, precio, subtotal }
+      subtotalSinDescuento = 0,
       total = 0,
       pagos = [], // { metodo, monto } (ya no se imprime)
       redondeo = 0,
@@ -466,13 +467,36 @@ ipcMain.handle('escpos:print-ticket', async (_event, payload) => {
 
     const padRight = (txt, len) => (String(txt || '')).slice(0, len).padEnd(len, ' ');
     const padLeft = (txt, len) => (String(txt || '')).slice(0, len).padStart(len, ' ');
-    // Mostrar importes en pesos enteros (sin decimales)
-    const money = (n) => String(Math.round(Number(n || 0)));
+    const money = (n) => Math.round(Number(n || 0));
+    const moneyStr = (n) => money(n).toLocaleString('es-AR');
+    const fmtCant = (n) => {
+      const num = Number(n);
+      if (!isFinite(num)) return '0';
+      if (Math.abs(num - Math.round(num)) < 0.001) return String(Math.round(num));
+      return String(Number(num.toFixed(3)));
+    };
+    const wrapText = (text, maxLen) => {
+      const words = String(text || '').trim().split(/\s+/).filter(Boolean);
+      if (!words.length) return [];
+      const lines = [];
+      let cur = '';
+      for (const w of words) {
+        const next = cur ? `${cur} ${w}` : w;
+        if (next.length <= maxLen) {
+          cur = next;
+        } else {
+          if (cur) lines.push(cur);
+          cur = w.length > maxLen ? w.slice(0, maxLen) : w;
+        }
+      }
+      if (cur) lines.push(cur);
+      return lines;
+    };
 
     // 58mm común ≈ 32 caracteres
     const COLS = 32;
-    // Layout: Cant(4) + espacio(1) + Detalle(19) + Subt(8) = 32
-    const QTY_W = 4, GAP_W = 1, DET_W = 19, SUB_W = 8;
+    const SUB_W = 9;
+    const DET_W = COLS - SUB_W;
     const line = () => printer.text('-'.repeat(COLS));
 
     await new Promise((resolve, reject) => {
@@ -485,44 +509,73 @@ ipcMain.handle('escpos:print-ticket', async (_event, payload) => {
             .style('b')
             .size(0,0)
             .text(negocio.nombre)
-            .style('normal')
-            // .text(negocio.dir1)
-            // .text(negocio.dir2)
-            .text(vendedor ? (`Vendedor: ${vendedor}`) : '')
-            .text(fecha || '')
-            .text(numero ? `Ticket: ${numero}` : '');
+            .style('normal');
+          if (fecha) printer.text(fecha);
+          if (numero) printer.text(`Ticket: ${numero}`);
 
           line();
           printer.align('lt');
-          // Encabezado columnas (mostrar Subtotal por ítem)
-          printer.text(`${padRight('Cant',QTY_W)}${' '.repeat(GAP_W)}${padRight('Detalle',DET_W)}${padLeft('Subt',SUB_W)}`);
-          // Items con subtotal y un espacio entre Cant y Detalle
+
           for (const it of items) {
-            const cant = padRight(it.cantidad, QTY_W);
-            const det  = padRight(it.detalle, DET_W);
-            const st   = padLeft('$' + money(it.subtotal), SUB_W);
-            printer.text(`${cant}${' '.repeat(GAP_W)}${det}${st}`);
+            const nombre = String(it.detalle || '').trim();
+            if (!nombre) continue;
+            const cantStr = fmtCant(it.cantidad);
+            const puStr = moneyStr(it.precio);
+            const subtStr = moneyStr(it.subtotal);
+
+            for (const nl of wrapText(nombre, COLS)) {
+              if (nl.trim()) printer.text(nl);
+            }
+
+            const detalleLinea = `Cant. x${cantStr}  P.U $${puStr}`;
+            printer.text(`${padRight(detalleLinea, DET_W)}${padLeft('$' + subtStr, SUB_W)}`);
           }
 
           line();
-          // Calcular base SIN descuento (lo que querés que figure como TOTAL)
-          const base = (items || []).reduce((acc, it) => acc + Math.round(Number(it.subtotal || (Number(it.cantidad||0) * Number(it.precio||0)))), 0);
-          // Nueva regla: siempre redondear hacia arriba al próximo múltiplo de 50
+          const subtotalBruto = money(subtotalSinDescuento) || (items || []).reduce(
+            (acc, it) => acc + money(it.subtotal || (Number(it.cantidad || 0) * Number(it.precio || 0))),
+            0
+          );
+
+          let descuentoCalc = 0;
+          const pct = Number(descuentoPct || 0);
+          const montoDesc = money(descuentoMonto || 0);
+          if (pct > 0) {
+            descuentoCalc = Math.round(subtotalBruto * pct / 100);
+          } else if (montoDesc > 0) {
+            descuentoCalc = montoDesc;
+          }
+
+          const subtotalNeto = Math.max(0, subtotalBruto - descuentoCalc);
           let redondeoCalc = 0;
           if (aplicarRedondeo) {
-            const resto50 = base % 50;
+            const resto50 = subtotalNeto % 50;
             redondeoCalc = resto50 === 0 ? 0 : (50 - resto50);
           }
-          // Ocultar línea de redondeo en el ticket
-          const totalFinal = base + redondeoCalc;
-          printer.align('rt').style('b').text(`TOTAL: $${money(totalFinal)}`).style('normal').align('lt');
+          const totalCalculado = subtotalNeto + redondeoCalc;
+          const totalFinal = money(total) > 0 ? money(total) : totalCalculado;
+
+          const summaryRow = (label, valueStr) => {
+            printer.text(`${padRight(label, DET_W)}${padLeft(valueStr, SUB_W)}`);
+          };
+
+          printer.align('lt');
+          if (descuentoCalc > 0) {
+            summaryRow('Subtotal:', '$' + moneyStr(subtotalBruto));
+            const descLabel = pct > 0 ? `Descuento (${pct}%):` : 'Descuento:';
+            summaryRow(descLabel, '-$' + moneyStr(descuentoCalc));
+          }
+
+          printer.align('rt').style('b').text(`TOTAL: $${moneyStr(totalFinal)}`).style('normal').align('lt');
           printer.text('');
           printer.align('ct').text('Gracias por su compra!');
           printer.align('ct').text('Ticket no valido como factura');
           printer.text('');
           printer.cut();
-          printer.close();
-          resolve();
+          printer.close((closeErr) => {
+            if (closeErr) reject(closeErr);
+            else resolve();
+          });
         } catch(e) {
           try { printer.close(); } catch {}
           reject(e);
