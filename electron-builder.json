@@ -15,6 +15,12 @@
   "asarUnpack": [
     "**/node_modules/better-sqlite3/**/*"
   ],
+  "extraResources": [
+    {
+      "from": "assets/icon.ico",
+      "to": "assets/icon.ico"
+    }
+  ],
   "win": {
     "target": "nsis",
     "icon": "assets/icon.ico"

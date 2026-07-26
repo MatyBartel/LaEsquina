@@ -4,11 +4,16 @@ const fs = require("fs");
 const Database = require("better-sqlite3");
 
 const isDev = process.env.NODE_ENV === "development";
+const APP_ID = "com.laesquina.app";
 
+if (process.platform === "win32") {
+  app.setAppUserModelId(APP_ID);
+}
+
+let mainWindow;
 const DATA_DIR_NAME = "Polirubro La Esquina";
 const DB_FILE_NAME = "polirubro.db";
 
-let mainWindow;
 let db;
 let dbPath;
 
@@ -70,7 +75,20 @@ function initDatabase() {
   }
 }
 
+function resolveAppIcon() {
+  const candidates = [
+    path.join(__dirname, "../assets/icon.ico"),
+    path.join(process.resourcesPath, "assets/icon.ico"),
+    path.join(app.getAppPath(), "assets/icon.ico"),
+  ];
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return undefined;
+}
+
 function createWindow() {
+  const appIcon = resolveAppIcon();
   mainWindow = new BrowserWindow({
     width: 1200,
     height: 800,
@@ -81,7 +99,7 @@ function createWindow() {
       contextIsolation: true,
       preload: path.join(__dirname, "preload.js"),
     },
-    icon: path.join(__dirname, "../assets/icon.ico"),
+    ...(appIcon ? { icon: appIcon } : {}),
     title: "Polirubro La Esquina",
   });
 

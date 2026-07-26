@@ -1,16 +1,45 @@
-# Polirubro La Esquina - Sistema de Control de Stock y Ventas
+<p align="center">
+  <img src="public/logos/la-esquina-banner.png" alt="La Esquina - Polirubro" width="520">
+</p>
 
-Aplicación de escritorio desarrollada con **Electron** y **Angular** para la gestión integral de un almacén polirubro (almacén, granja y kiosco).
+<p align="center">
+  <img src="public/logos/la-esquina-logo.png" alt="Logo La Esquina" width="120">
+  &nbsp;&nbsp;
+  <img src="public/logos/la-esquina-icon.png" alt="Icono La Esquina" width="72">
+</p>
 
-## Características
+<p align="center">
+  <strong>La Esquina - Polirubro</strong><br>
+  Almacén, granja y kiosco · Sistema de stock, ventas y gastos
+</p>
 
-- **Dashboard**: Vista general de productos, stock y ventas
-- **Gestión de Productos**: Alta uno por uno con categoría, código de barras, costo, margen y tipo de venta (unidad / kilo / litro)
-- **Sistema de Ventas**: Registro de ventas con múltiples productos
-- **Control de Stock**: Alertas automáticas de stock bajo
-- **Gastos**: Registro de gastos por categoría, con filtro por día y navegación por mes/año
-- **Base de Datos Local**: SQLite para almacenamiento persistente
-- **Funciona sin internet**
+<p align="center">
+  Electron + Angular · SQLite local · Funciona sin internet
+</p>
+
+---
+
+## Qué hace
+
+Aplicación de escritorio para llevar el negocio desde la caja: productos, ventas con escáner, stock, gastos, estadísticas e impresión de tickets térmicos.
+
+| Módulo | Descripción |
+|--------|-------------|
+| **Dashboard** | Resumen del día: ventas, gastos y accesos rápidos |
+| **Ventas** | Carrito, pagos, descuentos, escáner USB y ticket ESC/POS |
+| **Stock** | Catálogo, categorías, importación Excel, alertas de stock bajo |
+| **Gastos** | Registro por categoría con navegación por mes/año |
+| **Estadísticas** | Ingresos, top productos, métodos de pago y valor de inventario |
+
+<p align="center">
+  <img src="public/logos/barcode.png" alt="Escáner" width="40" title="Escáner de código de barras en ventas">
+  &nbsp;
+  <img src="public/logos/gastosmenu.png" alt="Gastos menú" width="40" title="Módulo de gastos">
+  &nbsp;
+  <img src="public/logos/gastos.png" alt="Gastos" width="40" title="Control de gastos">
+</p>
+
+---
 
 ## Instalación
 
@@ -19,7 +48,7 @@ Aplicación de escritorio desarrollada con **Electron** y **Angular** para la ge
 - Node.js 18+
 - npm
 
-### Pasos
+### Clonar e instalar
 
 ```bash
 git clone https://github.com/MatyBartel/LaEsquina.git
@@ -28,23 +57,29 @@ npm install
 npm run postinstall
 ```
 
-La aplicación usa una **base de datos propia e independiente** de la app de ferretería:
+### Base de datos
+
+La app usa una **base propia e independiente**:
 
 ```
 Documentos/Polirubro La Esquina/datos/polirubro.db
 ```
 
-No lee ni modifica `ferreteria.db`. Al abrir la app por primera vez, la base arranca vacía.
+No lee ni modifica otras bases. Al abrir por primera vez arranca vacía.
 
-Desde el dashboard podés abrir esa carpeta con el botón de guardar (esquina inferior derecha).
+Desde el **dashboard** podés abrir esa carpeta con el botón de la esquina inferior derecha.
 
-## Ejecutar
+---
 
-### Desarrollo (recomendado para modificar)
+## Cómo levantar el proyecto
+
+### Desarrollo (recomendado mientras programás)
 
 ```bash
 npm run electron:dev
 ```
+
+Levanta Angular en `localhost:4200` y abre Electron encima.
 
 ### Producción local (probar el build sin instalador)
 
@@ -53,19 +88,29 @@ npm run build:clean
 npm run electron
 ```
 
-Si ves pantalla en blanco o el cartel "No se encontró la aplicación", el build de Angular no terminó bien. Volvé a correr `npm run build:clean`.
+> Si ves pantalla en blanco o *"No se encontró la aplicación"*, volvé a correr `npm run build:clean`.
 
-### Instalador Windows
+### Instalador Windows (notebook del negocio)
 
 ```bash
 npm run electron:build
 ```
 
-El `.exe` queda en `dist-electron/`.
+El `.exe` queda en `dist-electron/`. Ahí también se ve bien el **icono en la barra de tareas**.
 
-## Build confiable (si falla o queda desactualizado)
+### Solo web (sin Electron)
 
-Corré estos pasos en orden, en PowerShell o CMD dentro de la carpeta del proyecto:
+```bash
+npm run start
+```
+
+→ http://localhost:4200
+
+---
+
+## Build confiable
+
+Si algo falla o queda desactualizado, en PowerShell o CMD:
 
 ```bash
 npm run clean
@@ -75,7 +120,7 @@ npm run build:clean
 npm run electron
 ```
 
-Para generar el instalador:
+Instalador:
 
 ```bash
 npm run electron:build
@@ -89,30 +134,40 @@ npm run electron:build
 | Cambios de Angular no se ven | No uses solo `electron`; hace falta `build` antes |
 | Error con `better-sqlite3` | `npm run rebuild:native` |
 | Build raro / archivos viejos | `npm run clean` y volver a buildear |
-| Solo querés probar en el navegador | `npm run start` → http://localhost:4200 |
+| Icono genérico en la barra | Usá el `.exe` de `electron:build`, no `electron:dev` |
 
-**Importante:** `electron:dev` usa el servidor en vivo (`localhost:4200`). `npm run electron` usa los archivos compilados en `dist/la-esquina/browser/`. Son dos modos distintos.
+**Importante:** `electron:dev` usa el servidor en vivo. `npm run electron` usa los archivos compilados en `dist/la-esquina/browser/`. Son dos modos distintos.
+
+---
 
 ## Scripts
 
-- `npm run electron:dev` - Desarrollo con recarga
-- `npm run build:clean` - Limpia y compila Angular (producción)
-- `npm run electron` - Abre la app con el build compilado
-- `npm run electron:build` - Limpia, compila y genera instalador Windows
-- `npm run electron:pack` - Igual que build pero sin instalador (carpeta descomprimida)
-- `npm run clean` - Borra `dist`, `dist-electron` y caché de Angular
-- `npm run rebuild:native` - Recompila módulos nativos (SQLite) para Electron
+| Comando | Qué hace |
+|---------|----------|
+| `npm run electron:dev` | Desarrollo con recarga |
+| `npm run build:clean` | Limpia y compila Angular (producción) |
+| `npm run electron` | Abre la app con el build compilado |
+| `npm run electron:build` | Build + instalador Windows |
+| `npm run electron:pack` | Build sin instalador (carpeta descomprimida) |
+| `npm run clean` | Borra `dist`, `dist-electron` y caché |
+| `npm run rebuild:native` | Recompila SQLite/USB para Electron |
+
+---
 
 ## Estructura
 
 ```
 LaEsquina/
-├── src/app/          # Angular (componentes, servicios)
-├── electron/         # Proceso principal Electron
-├── public/logos/     # Logos e iconos de La Esquina
-└── assets/           # Icono de la app (.ico)
+├── src/app/              # Angular (componentes, servicios)
+├── electron/             # Proceso principal Electron + impresión
+├── public/logos/         # Marca, íconos de módulos, escáner
+└── assets/               # icon.ico para Windows
 ```
 
-## Licencia
+---
 
-MIT
+<p align="center">
+  <img src="public/logos/la-esquina-icon.png" alt="Icono app" width="56">
+</p>
+
+<p align="center"><sub>MIT · La Esquina - Polirubro</sub></p>
