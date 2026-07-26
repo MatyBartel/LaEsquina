@@ -31,22 +31,22 @@
 <table>
   <tr>
     <td align="center" width="20%">
-      <img src="public/logos/la-esquina-icon.png" alt="Inicio" width="48" /><br/>
+      <img src="public/logos/home.png" alt="Inicio" width="48" /><br/>
       <strong>Dashboard</strong><br/>
       <sub>Resumen del día, ventas, gastos y stock bajo</sub>
     </td>
     <td align="center" width="20%">
-      <img src="public/logos/barcode.png" alt="Ventas" width="48" /><br/>
+      <img src="public/logos/carrito.png" alt="Ventas" width="48" /><br/>
       <strong>Ventas</strong><br/>
       <sub>Carrito, escáner USB, pagos, descuentos y ticket</sub>
     </td>
     <td align="center" width="20%">
-      <img src="public/logos/add.png" alt="Stock" width="48" /><br/>
+      <img src="public/logos/stockmenu.png" alt="Stock" width="48" /><br/>
       <strong>Stock</strong><br/>
       <sub>Productos, categorías, Excel, códigos de barras</sub>
     </td>
     <td align="center" width="20%">
-      <img src="public/logos/la-esquina-logo.png" alt="Estadísticas" width="48" /><br/>
+      <img src="public/logos/estadisticasmenu.png" alt="Estadísticas" width="48" /><br/>
       <strong>Estadísticas</strong><br/>
       <sub>Ingresos, top productos, pagos e inventario</sub>
     </td>
