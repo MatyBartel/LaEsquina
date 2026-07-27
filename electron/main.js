@@ -533,6 +533,7 @@ ipcMain.handle('escpos:print-ticket', async (_event, payload) => {
 
           line();
           printer.align('lt');
+          printer.text(`${padRight('Detalle', DET_W)}${padLeft('Subtotal', SUB_W)}`);
 
           for (const it of items) {
             const nombre = String(it.detalle || '').trim();

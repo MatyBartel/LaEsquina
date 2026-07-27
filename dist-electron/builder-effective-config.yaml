@@ -1,0 +1,32 @@
+directories:
+  output: dist-electron
+  buildResources: assets
+appId: com.laesquina.app
+productName: Polirubro La Esquina
+files:
+  - filter:
+      - dist/la-esquina/browser/**/*
+      - electron/**/*
+      - package.json
+      - '!electron/**/*.ts'
+      - '!**/*.map'
+asarUnpack:
+  - '**/node_modules/better-sqlite3/**/*'
+extraResources:
+  - from: assets/icon.ico
+    to: assets/icon.ico
+win:
+  target: nsis
+  icon: assets/icon.ico
+mac:
+  target: dmg
+  icon: electron/assets/icon.icns
+linux:
+  target: AppImage
+  icon: electron/assets/icon.png
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+electronVersion: 37.2.6
