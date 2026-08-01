@@ -30,10 +30,8 @@ export class StockComponent implements OnInit, OnDestroy {
   productoFormId: number | null = null;
 
   showMassPrice = false;
-  massMode: 'stock' | 'ganancia' = 'stock';
   seleccionados = new Set<number>();
   categoriaAumento = '';
-  cantidadStock = 0;
   pctGananciaDelta = 0;
   page = 1;
   pageSize = 10;
@@ -242,47 +240,9 @@ export class StockComponent implements OnInit, OnDestroy {
   }
 
   async aplicarAumento(): Promise<void> {
-    if (this.massMode === 'ganancia') {
-      await this.aplicarAumentoGanancia();
-      return;
-    }
-    const porSeleccion = this.seleccionados.size > 0;
-    const porCategoria = !!this.categoriaAumento;
-
-    const cant = Number(this.cantidadStock);
-    if (!isFinite(cant) || cant === 0) {
-      this.toast.show('Ingresá una cantidad de stock válida (distinta de 0).', 'error');
-      return;
-    }
-
-    const afectadas: Producto[] = [];
-    this.startLoading('Aplicando cambios');
-    await new Promise(r => setTimeout(r));
-
-    for (const p of this.productosParaAumento()) {
-      const delta = this.esFraccionable(p) ? cant : Math.trunc(cant);
-      const nuevoStock = Math.max(0, Number(((p.stock || 0) + delta).toFixed(3)));
-      afectadas.push({ ...p, stock: nuevoStock });
-    }
-
-    if (!afectadas.length) {
-      this.toast.show('No hay productos que coincidan con la selección.', 'warning');
-      this.cerrarLoading();
-      return;
-    }
-
-    const count = this.db.actualizarProductosEnBloquePorId(afectadas);
-    const scopeTxt = porSeleccion ? 'seleccionados' : (porCategoria ? `categoría "${this.categoriaAumento}"` : 'todos los productos filtrados');
-    this.toast.show(`Stock actualizado (±${cant} en ${count} productos, ${scopeTxt}).`);
-    this.showMassPrice = false;
-    this.limpiarSeleccion();
-    this.finishLoadingSuccess({ modificados: count });
-  }
-
-  async aplicarAumentoGanancia(): Promise<void> {
     const delta = Number(this.pctGananciaDelta);
     if (!isFinite(delta) || delta === 0) {
-      this.toast.show('Ingresá un % de ganancia válido (distinto de 0).', 'error');
+      this.toast.show('Ingresá una variación válida (ej: 10 o -10, distinta de 0).', 'error');
       return;
     }
 
@@ -292,7 +252,7 @@ export class StockComponent implements OnInit, OnDestroy {
       return;
     }
 
-    this.startLoading('Aplicando % ganancia');
+    this.startLoading('Aplicando variación de % ganancia');
     await new Promise(r => setTimeout(r));
 
     const afectadas = base.map(p => {
@@ -306,7 +266,8 @@ export class StockComponent implements OnInit, OnDestroy {
     const porSeleccion = this.seleccionados.size > 0;
     const porCategoria = !!this.categoriaAumento;
     const scopeTxt = porSeleccion ? 'seleccionados' : (porCategoria ? `categoría "${this.categoriaAumento}"` : 'todos los productos');
-    this.toast.show(`% ganancia actualizado (${delta > 0 ? '+' : ''}${delta}% en ${count} productos, ${scopeTxt}).`);
+    const deltaTxt = delta > 0 ? `+${delta}` : String(delta);
+    this.toast.show(`% ganancia ajustado (${deltaTxt} pts en ${count} productos, ${scopeTxt}).`);
     this.showMassPrice = false;
     this.limpiarSeleccion();
     this.finishLoadingSuccess({ modificados: count });

@@ -119,10 +119,9 @@
   <button
     type="button"
     class="fab-backup"
-    (click)="ejecutarBackupAhora()"
-    [disabled]="backupEnCurso"
-    [title]="backupEnCurso ? 'Generando backup...' : 'Generar backup ahora'"
+    (click)="abrirCarpetasApp()"
+    title="Abrir carpeta de datos y backups (Documentos/Polirubro La Esquina)"
   >
-    <img src="logos/guardar.png" alt="Backup" width="28" height="28" />
+    <img src="logos/guardar.png" alt="Abrir carpetas" width="28" height="28" />
   </button>
 </div>

@@ -42,6 +42,7 @@ testem.log
 Thumbs.db
 
 # Builds de Electron
+/dist-electron
 /dist
 *.exe
 *.msi
@@ -54,4 +55,4 @@ Thumbs.db
 /backups/
 
 # Carpeta residual (eliminar manualmente si queda)
-/ferreteria-app
+/dist-electron

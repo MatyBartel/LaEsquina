@@ -30,7 +30,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   ultimasVentas: Venta[] = [];
   backupCloudOk: boolean | null = null;
   backupLastRun: string | null = null;
-  backupEnCurso = false;
   backupDisponible = false;
 
   fechaSeleccionada = '';
@@ -54,12 +53,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   private async cargarEstadoBackup(): Promise<void> {
     const electronAPI: any = (window as any)?.electronAPI;
-    if (!electronAPI?.backupGetStatus) {
+    if (!electronAPI?.openAppFolder && !electronAPI?.backupGetStatus) {
       this.backupDisponible = false;
       this.backupCloudOk = null;
       return;
     }
     this.backupDisponible = true;
+    if (!electronAPI?.backupGetStatus) return;
     electronAPI.onBackupStatusChanged?.((status: BackupStatus) => {
       this.aplicarEstadoBackup(status);
     });
@@ -70,7 +70,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private aplicarEstadoBackup(status: BackupStatus): void {
     this.backupCloudOk = !!status.cloudOk;
     this.backupLastRun = status.lastRun || null;
-    this.backupEnCurso = false;
   }
 
   get etiquetaUltimoBackup(): string {
@@ -81,22 +80,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
   }
 
-  async ejecutarBackupAhora(): Promise<void> {
+  async abrirCarpetasApp(): Promise<void> {
     const electronAPI: any = (window as any)?.electronAPI;
-    if (!electronAPI?.backupRunNow || this.backupEnCurso) return;
-    this.backupEnCurso = true;
-    try {
-      const status = await electronAPI.backupRunNow();
-      if (status) this.aplicarEstadoBackup(status);
-    } finally {
-      this.backupEnCurso = false;
+    if (electronAPI?.openAppFolder) {
+      await electronAPI.openAppFolder();
+      return;
     }
-  }
-
-  async abrirCarpetaBackup(): Promise<void> {
-    const electronAPI: any = (window as any)?.electronAPI;
-    if (electronAPI?.openBackupFolder) {
-      await electronAPI.openBackupFolder();
+    if (electronAPI?.openDataFolder) {
+      await electronAPI.openDataFolder();
     }
   }
 
@@ -190,12 +181,5 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   verVentas(): void {
     alert('Función de Ver Ventas - En desarrollo');
-  }
-
-  async abrirCarpetaDatos(): Promise<void> {
-    const electronAPI: any = (window as any)?.electronAPI;
-    if (electronAPI?.openDataFolder) {
-      await electronAPI.openDataFolder();
-    }
   }
 } 

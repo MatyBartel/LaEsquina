@@ -45,6 +45,12 @@ function resolveBackupDir() {
   return backupDir;
 }
 
+function resolveAppRootDir() {
+  resolveDataDir();
+  resolveBackupDir();
+  return path.join(app.getPath("documents"), DATA_DIR_NAME);
+}
+
 function resolveGoogleDriveRoots() {
   const home = app.getPath("home");
   const candidates = [
@@ -1104,6 +1110,17 @@ ipcMain.handle('escpos:open-drawer', async () => {
 ipcMain.handle("backup:run-now", async () => runBackup());
 
 ipcMain.handle("backup:get-status", async () => ({ ...backupStatus }));
+
+ipcMain.handle("open-app-folder", async () => {
+  try {
+    const root = resolveAppRootDir();
+    await shell.openPath(root);
+    return { ok: true, path: root };
+  } catch (e) {
+    console.error("[main] open-app-folder error", e);
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
 
 ipcMain.handle("open-backup-folder", async () => {
   try {
