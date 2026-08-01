@@ -52,6 +52,21 @@ contextBridge.exposeInMainWorld('electronAPI', {
   openDataFolder: async () => {
     try { return await ipcRenderer.invoke('open-data-folder'); } catch { return { ok:false }; }
   },
+  openBackupFolder: async () => {
+    try { return await ipcRenderer.invoke('open-backup-folder'); } catch { return { ok: false }; }
+  },
+  backupRunNow: async () => {
+    try { return await ipcRenderer.invoke('backup:run-now'); } catch (e) { return { ok: false, error: e?.message || String(e) }; }
+  },
+  backupGetStatus: async () => {
+    try { return await ipcRenderer.invoke('backup:get-status'); } catch { return null; }
+  },
+  onBackupStatusChanged: (callback) => {
+    ipcRenderer.on('backup:status-changed', (_event, status) => callback(status));
+  },
+  removeBackupStatusListener: () => {
+    ipcRenderer.removeAllListeners('backup:status-changed');
+  },
   getAppName: () => {
     try {
       console.log('[preload] getAppName → invoke');

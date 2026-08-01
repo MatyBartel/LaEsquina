@@ -102,7 +102,27 @@
       </div>
     </div>
   </div>
-</div> 
-<button class="fab-backup" (click)="abrirCarpetaDatos()" title="Abrir carpeta de datos (Documentos/Polirubro La Esquina/datos/polirubro.db)">
-  <img src="logos/guardar.png" alt="Abrir carpeta de datos" width="28" height="28" />
-</button>
+</div>
+
+<div class="backup-float" *ngIf="backupDisponible">
+  <div class="backup-card">
+    <div class="backup-line">
+      Backup diario: 12:00 · Último: {{ etiquetaUltimoBackup }}
+    </div>
+    <div class="backup-nube">
+      <span>Nube</span>
+      <span class="nube-badge" [class.ok]="backupCloudOk === true" [class.fail]="backupCloudOk !== true">
+        {{ backupCloudOk === true ? '✓' : '✗' }}
+      </span>
+    </div>
+  </div>
+  <button
+    type="button"
+    class="fab-backup"
+    (click)="ejecutarBackupAhora()"
+    [disabled]="backupEnCurso"
+    [title]="backupEnCurso ? 'Generando backup...' : 'Generar backup ahora'"
+  >
+    <img src="logos/guardar.png" alt="Backup" width="28" height="28" />
+  </button>
+</div>

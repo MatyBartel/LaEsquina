@@ -25,6 +25,8 @@ export class VentasComponent implements OnInit, OnDestroy {
   vendedor = 'Vendedor 1';
   cliente = '';
   private sub?: Subscription;
+  private subVentas?: Subscription;
+  ventasRevision = 0;
   ventaAEliminar: Venta | null = null;
   restockConfirm = true;
   fechaSeleccionada: string = '';
@@ -59,6 +61,9 @@ export class VentasComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.sub = this.db.getProductos().subscribe(items => (this.productos = items));
+    this.subVentas = this.db.getVentas().subscribe(() => {
+      this.ventasRevision++;
+    });
     this.db.getVendedores().subscribe(vs => {
       this.vendedores = vs;
       if (!this.vendedores.includes(this.vendedor) && this.vendedores.length) {
@@ -71,6 +76,7 @@ export class VentasComponent implements OnInit, OnDestroy {
 
   ngOnDestroy(): void {
     this.sub?.unsubscribe();
+    this.subVentas?.unsubscribe();
     this.barcodeScanner.stopCapture();
     this.escaneoActivo = false;
   }
@@ -131,11 +137,7 @@ export class VentasComponent implements OnInit, OnDestroy {
     }
 
     this.ultimoEscaneo = codigo;
-    if ((producto.stock || 0) <= 0) {
-      this.toast.show(`${producto.nombre}: sin stock`, 'warning');
-    } else {
-      this.toast.show(`${producto.nombre}: stock insuficiente`, 'warning');
-    }
+    this.toast.show(`${producto.nombre}: no se pudo agregar`, 'warning');
   }
 
   get productosFiltrados(): Producto[] {
@@ -195,10 +197,9 @@ export class VentasComponent implements OnInit, OnDestroy {
   }
 
   agregarAlCarrito(p: Producto, opts?: { silencioso?: boolean }): boolean {
-    const disponible = this.stockDisponible(p.id!);
-    if (disponible < 1) {
+    if (!p.id) {
       if (!opts?.silencioso) {
-        this.toast.show('Sin stock disponible para este producto', 'warning');
+        this.toast.show('Producto inválido', 'warning');
       }
       return false;
     }
@@ -221,28 +222,12 @@ export class VentasComponent implements OnInit, OnDestroy {
     return true;
   }
 
-  private stockDisponible(productoId: number): number {
-    const prod = this.db.getProductoById(productoId);
-    if (!prod) return 0;
-    const enCarrito = this.carrito.find(vp => vp.productoId === productoId)?.cantidad || 0;
-    return Math.max(0, (prod.stock || 0) - enCarrito);
-  }
-
   quitarDelCarrito(vp: VentaProductoExt): void {
     this.carrito = this.carrito.filter(x => x !== vp);
   }
 
   actualizarCantidad(vp: VentaProductoExt): void {
     if (vp.cantidad <= 0) vp.cantidad = 0.001;
-    const prod = this.db.getProductoById(vp.productoId);
-    const enCarrito = vp.cantidad;
-    const maxPermitido = prod ? (prod.stock || 0) : 0;
-    if (prod && enCarrito > maxPermitido) {
-      vp.cantidad = maxPermitido;
-      vp.editCantidad = String(maxPermitido);
-      this.toast.show('Se ajustó a stock disponible', 'info');
-    }
-    // Redondear a pesos enteros
     vp.subtotal = Math.round(vp.cantidad * vp.precioUnitario);
   }
 
@@ -509,6 +494,7 @@ export class VentasComponent implements OnInit, OnDestroy {
   }
 
   get ventasDelDia(): Venta[] {
+    void this.ventasRevision;
     const ventas = this.db.getVentasActuales();
     if (!this.fechaSeleccionada) {
       return this.ultimas24h;
@@ -693,12 +679,19 @@ export class VentasComponent implements OnInit, OnDestroy {
 
   confirmarEliminarVenta(): void {
     const v = this.ventaAEliminar;
-    if (!v || !v.id) {
+    const ventaId = Number(v?.id);
+    if (!v || !Number.isFinite(ventaId) || ventaId <= 0) {
+      this.toast.show('No se pudo eliminar: venta sin identificador', 'error');
       this.ventaAEliminar = null;
       return;
     }
-    this.db.eliminarVenta(v.id, this.restockConfirm);
-    this.toast.show('Venta eliminada', 'info');
+    const ok = this.db.eliminarVenta(ventaId, this.restockConfirm);
+    if (ok) {
+      this.toast.show('Venta eliminada', 'info');
+      this.goToPageVentas(this.pageVentas);
+    } else {
+      this.toast.show('No se pudo eliminar la venta', 'error');
+    }
     this.ventaAEliminar = null;
   }
 

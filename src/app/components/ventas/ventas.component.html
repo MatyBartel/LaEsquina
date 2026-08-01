@@ -16,10 +16,13 @@
         </div>
       </div>
       <ul class="lista">
-        <li *ngFor="let p of productosCatalogoPaginados; trackBy: trackByProductoCatalogo">
+        <li *ngFor="let p of productosCatalogoPaginados; trackBy: trackByProductoCatalogo" [class.sin-stock]="(p.stock || 0) <= 0">
           <div class="info">
             <div class="nombre">{{ p.nombre }}</div>
-            <div class="meta meta-principal">{{ p.codigo }} • ${{ p.precio | number:'1.0-0' }} • Stock: {{ p.stock }}</div>
+            <div class="meta meta-principal">
+              {{ p.codigo }} • ${{ p.precio | number:'1.0-0' }}
+              • <span class="stock-badge" [class.agotado]="(p.stock || 0) <= 0">Stock: {{ p.stock }}</span>
+            </div>
             <div class="meta desc" *ngIf="p.descripcion">{{ p.descripcion }}</div>
           </div>
           <button class="add" (click)="agregarAlCarrito(p)"><app-icon name="plus" [size]="18" color="#ffffff"></app-icon></button>

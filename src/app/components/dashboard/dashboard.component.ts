@@ -4,6 +4,15 @@ import { RouterModule } from '@angular/router';
 import { DatabaseService, Producto, Venta } from '../../services/database.service';
 import { Subscription } from 'rxjs';
 
+interface BackupStatus {
+  localOk: boolean;
+  cloudOk: boolean;
+  lastRun: string | null;
+  lastFile: string | null;
+  cloudPath: string | null;
+  error: string | null;
+}
+
 @Component({
   selector: 'app-dashboard',
   standalone: true,
@@ -18,7 +27,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
   productosBajoStock = 0;
   totalVentas = 0;
   productosBajoStockList: Producto[] = [];
-  ultimasVentas: Venta[] = []; 
+  ultimasVentas: Venta[] = [];
+  backupCloudOk: boolean | null = null;
+  backupLastRun: string | null = null;
+  backupEnCurso = false;
+  backupDisponible = false;
 
   fechaSeleccionada = '';
   mostrarCalendario = false;
@@ -30,19 +43,70 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   ngOnInit(): void {
     this.cargarDatos();
+    this.cargarEstadoBackup();
   }
 
   ngOnDestroy(): void {
     this.subscription.unsubscribe();
+    const electronAPI: any = (window as any)?.electronAPI;
+    electronAPI?.removeBackupStatusListener?.();
+  }
+
+  private async cargarEstadoBackup(): Promise<void> {
+    const electronAPI: any = (window as any)?.electronAPI;
+    if (!electronAPI?.backupGetStatus) {
+      this.backupDisponible = false;
+      this.backupCloudOk = null;
+      return;
+    }
+    this.backupDisponible = true;
+    electronAPI.onBackupStatusChanged?.((status: BackupStatus) => {
+      this.aplicarEstadoBackup(status);
+    });
+    const status = await electronAPI.backupGetStatus();
+    if (status) this.aplicarEstadoBackup(status);
+  }
+
+  private aplicarEstadoBackup(status: BackupStatus): void {
+    this.backupCloudOk = !!status.cloudOk;
+    this.backupLastRun = status.lastRun || null;
+    this.backupEnCurso = false;
+  }
+
+  get etiquetaUltimoBackup(): string {
+    if (!this.backupLastRun) return 'pendiente';
+    const d = new Date(this.backupLastRun);
+    if (isNaN(d.getTime())) return 'pendiente';
+    const pad = (n: number) => String(n).padStart(2, '0');
+    return `${pad(d.getDate())}/${pad(d.getMonth() + 1)}/${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  }
+
+  async ejecutarBackupAhora(): Promise<void> {
+    const electronAPI: any = (window as any)?.electronAPI;
+    if (!electronAPI?.backupRunNow || this.backupEnCurso) return;
+    this.backupEnCurso = true;
+    try {
+      const status = await electronAPI.backupRunNow();
+      if (status) this.aplicarEstadoBackup(status);
+    } finally {
+      this.backupEnCurso = false;
+    }
+  }
+
+  async abrirCarpetaBackup(): Promise<void> {
+    const electronAPI: any = (window as any)?.electronAPI;
+    if (electronAPI?.openBackupFolder) {
+      await electronAPI.openBackupFolder();
+    }
   }
 
   private cargarDatos(): void {
     this.subscription.add(
       this.databaseService.productos$.subscribe(productos => {
         this.totalProductos = productos.length;
-        this.productosBajoStock = productos.filter(p => p.stock <= p.stockMinimo).length;
+        this.productosBajoStock = productos.filter(p => p.stockMinimo > 0 && p.stock <= p.stockMinimo).length;
         this.productosBajoStockList = productos
-          .filter(p => p.stock <= p.stockMinimo);
+          .filter(p => p.stockMinimo > 0 && p.stock <= p.stockMinimo);
       })
     );
 

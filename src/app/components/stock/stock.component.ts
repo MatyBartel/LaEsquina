@@ -30,9 +30,11 @@ export class StockComponent implements OnInit, OnDestroy {
   productoFormId: number | null = null;
 
   showMassPrice = false;
+  massMode: 'stock' | 'ganancia' = 'stock';
   seleccionados = new Set<number>();
   categoriaAumento = '';
   cantidadStock = 0;
+  pctGananciaDelta = 0;
   page = 1;
   pageSize = 10;
 
@@ -226,7 +228,24 @@ export class StockComponent implements OnInit, OnDestroy {
     this.seleccionados.clear();
   }
 
+  private productosParaAumento(): Producto[] {
+    const porSeleccion = this.seleccionados.size > 0;
+    const porCategoria = !!this.categoriaAumento;
+    const afectadas: Producto[] = [];
+    for (const p of this.productos) {
+      const matchSel = porSeleccion && p.id ? this.seleccionados.has(p.id) : false;
+      const matchCat = porCategoria ? p.categoria === this.categoriaAumento : false;
+      const aplicar = (porSeleccion && matchSel) || (porCategoria && matchCat) || (!porSeleccion && !porCategoria);
+      if (aplicar) afectadas.push(p);
+    }
+    return afectadas;
+  }
+
   async aplicarAumento(): Promise<void> {
+    if (this.massMode === 'ganancia') {
+      await this.aplicarAumentoGanancia();
+      return;
+    }
     const porSeleccion = this.seleccionados.size > 0;
     const porCategoria = !!this.categoriaAumento;
 
@@ -240,15 +259,10 @@ export class StockComponent implements OnInit, OnDestroy {
     this.startLoading('Aplicando cambios');
     await new Promise(r => setTimeout(r));
 
-    for (const p of this.productos) {
-      const matchSel = porSeleccion && p.id ? this.seleccionados.has(p.id) : false;
-      const matchCat = porCategoria ? p.categoria === this.categoriaAumento : false;
-      const aplicar = (porSeleccion && matchSel) || (porCategoria && matchCat) || (!porSeleccion && !porCategoria);
-      if (aplicar) {
-        const delta = this.esFraccionable(p) ? cant : Math.trunc(cant);
-        const nuevoStock = Math.max(0, Number(((p.stock || 0) + delta).toFixed(3)));
-        afectadas.push({ ...p, stock: nuevoStock });
-      }
+    for (const p of this.productosParaAumento()) {
+      const delta = this.esFraccionable(p) ? cant : Math.trunc(cant);
+      const nuevoStock = Math.max(0, Number(((p.stock || 0) + delta).toFixed(3)));
+      afectadas.push({ ...p, stock: nuevoStock });
     }
 
     if (!afectadas.length) {
@@ -260,6 +274,39 @@ export class StockComponent implements OnInit, OnDestroy {
     const count = this.db.actualizarProductosEnBloquePorId(afectadas);
     const scopeTxt = porSeleccion ? 'seleccionados' : (porCategoria ? `categoría "${this.categoriaAumento}"` : 'todos los productos filtrados');
     this.toast.show(`Stock actualizado (±${cant} en ${count} productos, ${scopeTxt}).`);
+    this.showMassPrice = false;
+    this.limpiarSeleccion();
+    this.finishLoadingSuccess({ modificados: count });
+  }
+
+  async aplicarAumentoGanancia(): Promise<void> {
+    const delta = Number(this.pctGananciaDelta);
+    if (!isFinite(delta) || delta === 0) {
+      this.toast.show('Ingresá un % de ganancia válido (distinto de 0).', 'error');
+      return;
+    }
+
+    const base = this.productosParaAumento();
+    if (!base.length) {
+      this.toast.show('No hay productos que coincidan con la selección.', 'warning');
+      return;
+    }
+
+    this.startLoading('Aplicando % ganancia');
+    await new Promise(r => setTimeout(r));
+
+    const afectadas = base.map(p => {
+      const costo = Number(p.precioCosto) || 0;
+      const nuevoPct = Number(((p.porcentajeGanancia ?? 0) + delta).toFixed(2));
+      const nuevoPrecio = this.db.calcularPrecioVenta(costo, nuevoPct);
+      return { ...p, porcentajeGanancia: nuevoPct, precio: nuevoPrecio };
+    });
+
+    const count = this.db.actualizarProductosEnBloquePorId(afectadas);
+    const porSeleccion = this.seleccionados.size > 0;
+    const porCategoria = !!this.categoriaAumento;
+    const scopeTxt = porSeleccion ? 'seleccionados' : (porCategoria ? `categoría "${this.categoriaAumento}"` : 'todos los productos');
+    this.toast.show(`% ganancia actualizado (${delta > 0 ? '+' : ''}${delta}% en ${count} productos, ${scopeTxt}).`);
     this.showMassPrice = false;
     this.limpiarSeleccion();
     this.finishLoadingSuccess({ modificados: count });

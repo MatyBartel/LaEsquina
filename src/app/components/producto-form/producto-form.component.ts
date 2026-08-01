@@ -26,7 +26,6 @@ export class ProductoFormComponent implements OnInit, OnChanges, OnDestroy {
   readonly tiposVenta: { value: TipoVenta; label: string }[] = [
     { value: 'unidad', label: 'Por unidad' },
     { value: 'kg', label: 'Por kilo' },
-    { value: 'litro', label: 'Por litro' },
   ];
 
   categorias: string[] = [];

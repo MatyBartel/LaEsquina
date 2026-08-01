@@ -491,3 +491,24 @@
   .toolbar-divider { display: none; }
   .total-mes .valor { font-size: 1.6rem; }
 }
+
+.paginacion {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 12px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.paginacion .controles {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.paginacion .pagina {
+  min-width: 28px;
+  text-align: center;
+  font-weight: 700;
+}

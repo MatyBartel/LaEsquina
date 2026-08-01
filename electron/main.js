@@ -13,9 +13,21 @@ if (process.platform === "win32") {
 let mainWindow;
 const DATA_DIR_NAME = "Polirubro La Esquina";
 const DB_FILE_NAME = "polirubro.db";
+const BACKUP_CLOUD_FOLDER = "Polirubro La Esquina Backup";
+const BACKUP_HOUR = 12;
+const BACKUP_MINUTE = 0;
 
 let db;
 let dbPath;
+let backupTimer = null;
+let backupStatus = {
+  localOk: false,
+  cloudOk: false,
+  lastRun: null,
+  lastFile: null,
+  cloudPath: null,
+  error: null,
+};
 
 function resolveDataDir() {
   const dataDir = path.join(app.getPath("documents"), DATA_DIR_NAME, "datos");
@@ -25,6 +37,123 @@ function resolveDataDir() {
 
 function resolveDbPath() {
   return path.join(resolveDataDir(), DB_FILE_NAME);
+}
+
+function resolveBackupDir() {
+  const backupDir = path.join(app.getPath("documents"), DATA_DIR_NAME, "backup");
+  fs.mkdirSync(backupDir, { recursive: true });
+  return backupDir;
+}
+
+function resolveGoogleDriveRoots() {
+  const home = app.getPath("home");
+  const candidates = [
+    path.join(home, "Google Drive"),
+    path.join(home, "Google Drive", "My Drive"),
+    path.join(home, "My Drive"),
+    path.join(process.env.LOCALAPPDATA || "", "Google", "Drive", "My Drive"),
+  ];
+  return candidates.filter((p) => p && fs.existsSync(p));
+}
+
+function resolveCloudBackupDir() {
+  for (const root of resolveGoogleDriveRoots()) {
+    const dir = path.join(root, BACKUP_CLOUD_FOLDER);
+    try {
+      fs.mkdirSync(dir, { recursive: true });
+      return dir;
+    } catch {}
+  }
+  return null;
+}
+
+function formatBackupTimestamp(d = new Date()) {
+  const pad = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}`;
+}
+
+function pruneBackupDir(dir) {
+  try {
+    const files = fs
+      .readdirSync(dir)
+      .filter((f) => f.startsWith("backup-") && f.endsWith(".db"))
+      .map((f) => ({ name: f, mtime: fs.statSync(path.join(dir, f)).mtimeMs }))
+      .sort((a, b) => b.mtime - a.mtime);
+    for (let i = 1; i < files.length; i++) {
+      try {
+        fs.unlinkSync(path.join(dir, files[i].name));
+      } catch {}
+    }
+  } catch {}
+}
+
+function notifyBackupStatus() {
+  try {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send("backup:status-changed", { ...backupStatus });
+    }
+  } catch {}
+}
+
+async function runBackup() {
+  const result = {
+    localOk: false,
+    cloudOk: false,
+    lastRun: new Date().toISOString(),
+    lastFile: null,
+    cloudPath: null,
+    error: null,
+  };
+  try {
+    const source = resolveDbPath();
+    if (!fs.existsSync(source)) {
+      throw new Error("No se encontró la base de datos");
+    }
+    const backupDir = resolveBackupDir();
+    const fileName = `backup-${formatBackupTimestamp()}.db`;
+    const localPath = path.join(backupDir, fileName);
+    fs.copyFileSync(source, localPath);
+    pruneBackupDir(backupDir);
+    result.localOk = true;
+    result.lastFile = localPath;
+
+    const cloudDir = resolveCloudBackupDir();
+    if (cloudDir) {
+      result.cloudPath = cloudDir;
+      const cloudPath = path.join(cloudDir, fileName);
+      fs.copyFileSync(localPath, cloudPath);
+      pruneBackupDir(cloudDir);
+      result.cloudOk = true;
+    } else {
+      result.error = "Google Drive no detectado";
+    }
+  } catch (e) {
+    result.error = e?.message || String(e);
+    console.error("[main] backup error", e);
+  }
+  backupStatus = { ...result };
+  notifyBackupStatus();
+  return { ...backupStatus };
+}
+
+function msUntilNextBackup() {
+  const now = new Date();
+  const next = new Date(now);
+  next.setHours(BACKUP_HOUR, BACKUP_MINUTE, 0, 0);
+  if (next.getTime() <= now.getTime()) {
+    next.setDate(next.getDate() + 1);
+  }
+  return next.getTime() - now.getTime();
+}
+
+function scheduleDailyBackup() {
+  if (backupTimer) clearTimeout(backupTimer);
+  const delay = msUntilNextBackup();
+  backupTimer = setTimeout(async () => {
+    await runBackup();
+    scheduleDailyBackup();
+  }, delay);
+  console.log(`[main] Próximo backup programado en ${Math.round(delay / 60000)} minutos`);
 }
 
 function resolveIndexHtml() {
@@ -218,6 +347,7 @@ function createMenu() {
 app.whenReady().then(() => {
   initDatabase();
   createWindow();
+  scheduleDailyBackup();
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -967,6 +1097,21 @@ ipcMain.handle('escpos:open-drawer', async () => {
     });
     return { ok: true };
   } catch (e) {
+    return { ok: false, error: e?.message || String(e) };
+  }
+});
+
+ipcMain.handle("backup:run-now", async () => runBackup());
+
+ipcMain.handle("backup:get-status", async () => ({ ...backupStatus }));
+
+ipcMain.handle("open-backup-folder", async () => {
+  try {
+    const backupDir = resolveBackupDir();
+    await shell.openPath(backupDir);
+    return { ok: true };
+  } catch (e) {
+    console.error("[main] open-backup-folder error", e);
     return { ok: false, error: e?.message || String(e) };
   }
 });

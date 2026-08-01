@@ -157,7 +157,8 @@ export class DatabaseService {
       }
       const productosRaw = JSON.parse((await electronAPI.kvGet('productos')) || '[]');
       const productos = productosRaw.map((p: any) => this.normalizarProducto(p));
-      const ventas = JSON.parse((await electronAPI.kvGet('ventas')) || '[]');
+      const ventasRaw = JSON.parse((await electronAPI.kvGet('ventas')) || '[]');
+      const ventas = this.migrarVentasIds(ventasRaw.map((v: any) => this.normalizarVenta(v)));
       const categorias = JSON.parse((await electronAPI.kvGet('categorias')) || '[]');
       const proveedoresListaRaw = JSON.parse((await electronAPI.kvGet('proveedoresLista')) || 'null');
       const vendedores = JSON.parse((await electronAPI.kvGet('vendedores')) || '[]');
@@ -167,7 +168,6 @@ export class DatabaseService {
       const categoriasGastoRaw = JSON.parse((await electronAPI.kvGet('categoriasGasto')) || 'null');
 
       productos.forEach((p: any) => p.fechaCreacion && (p.fechaCreacion = new Date(p.fechaCreacion)));
-      ventas.forEach((v: any) => v.fecha && (v.fecha = new Date(v.fecha)));
       pedidos.forEach((p: any) => p.fecha && (p.fecha = new Date(p.fecha)));
       gastos.forEach((g: any) => g.fecha && (g.fecha = new Date(g.fecha)));
 
@@ -198,7 +198,71 @@ export class DatabaseService {
       if (productosRaw.some((p: any) => this.necesitaMigracion(p))) {
         this.persistirProductos();
       }
+      if (productosRaw.some((p: any) => Number(p?.stock) < 0)) {
+        this.persistirProductos();
+        this.persistirSqliteKv('productos', this.productosSubject.value);
+      }
+      if (productosRaw.some((p: any) => Number(p?.stock) < 0)) {
+        this.persistirProductos();
+        this.persistirSqliteKv('productos', this.productosSubject.value);
+      }
+      if (ventasRaw.some((v: any) => !v?.id || typeof v.id !== 'number')) {
+        this.persistirVentas();
+        this.persistirSqliteKv('ventas', ventas);
+      }
     } catch { this.inicializarEjemplo(); }
+  }
+
+  private normalizarVenta(raw: any): Venta {
+    const idNum = Number(raw?.id);
+    const productos = Array.isArray(raw?.productos)
+      ? raw.productos.map((vp: any) => ({
+          productoId: Number(vp?.productoId) || 0,
+          codigo: String(vp?.codigo || ''),
+          nombre: String(vp?.nombre || ''),
+          cantidad: Number(vp?.cantidad) || 0,
+          precioUnitario: Number(vp?.precioUnitario) || 0,
+          subtotal: Number(vp?.subtotal) || 0,
+        }))
+      : [];
+    const pagos = Array.isArray(raw?.pagos)
+      ? raw.pagos.map((pg: any) => ({
+          metodo: String(pg?.metodo || ''),
+          monto: Number(pg?.monto) || 0,
+          referencia: pg?.referencia ? String(pg.referencia) : undefined,
+        }))
+      : undefined;
+    return {
+      id: Number.isFinite(idNum) && idNum > 0 ? idNum : undefined,
+      numeroTicket: String(raw?.numeroTicket || ''),
+      fecha: raw?.fecha ? new Date(raw.fecha) : new Date(),
+      productos,
+      total: Number(raw?.total) || 0,
+      redondeo: raw?.redondeo != null ? Number(raw.redondeo) : undefined,
+      totalManual: raw?.totalManual != null ? Number(raw.totalManual) : undefined,
+      descuentoPct: raw?.descuentoPct != null ? Number(raw.descuentoPct) : undefined,
+      descuentoMonto: raw?.descuentoMonto != null ? Number(raw.descuentoMonto) : undefined,
+      metodoPago: String(raw?.metodoPago || ''),
+      pagos,
+      cliente: raw?.cliente ? String(raw.cliente) : undefined,
+      vendedor: String(raw?.vendedor || ''),
+      vuelto: raw?.vuelto != null ? Number(raw.vuelto) : undefined,
+    };
+  }
+
+  private migrarVentasIds(ventas: Venta[]): Venta[] {
+    let nextId = ventas.reduce((max, v) => Math.max(max, Number(v.id) || 0), 0);
+    const used = new Set<number>();
+    for (const v of ventas) {
+      let id = Number(v.id);
+      if (!Number.isFinite(id) || id <= 0 || used.has(id)) {
+        nextId += 1;
+        id = nextId;
+        v.id = id;
+      }
+      used.add(id);
+    }
+    return ventas;
   }
 
   private necesitaMigracion(p: any): boolean {
@@ -241,7 +305,7 @@ export class DatabaseService {
       porcentajeGanancia,
       precio: precio > 0 ? precio : Number((precioCosto * (1 + porcentajeGanancia / 100)).toFixed(2)),
       tipoVenta,
-      stock: Number(raw?.stock) || 0,
+      stock: Math.max(0, Number(raw?.stock) || 0),
       stockMinimo: Number(raw?.stockMinimo) || 0,
       categoria: String(raw?.categoria || '').trim(),
       proveedor: String(raw?.proveedor || '').trim(),
@@ -717,7 +781,13 @@ export class DatabaseService {
     const productos = this.productosSubject.value;
     const index = productos.findIndex(p => p.id === id);
     if (index !== -1) {
-      productos[index].stock += cantidad;
+      const p = productos[index];
+      const esFraccionable = p.tipoVenta === 'kg' || p.tipoVenta === 'litro';
+      let nuevo = (Number(p.stock) || 0) + cantidad;
+      nuevo = esFraccionable
+        ? Math.max(0, Number(nuevo.toFixed(3)))
+        : Math.max(0, Math.trunc(nuevo));
+      productos[index].stock = nuevo;
       this.productosSubject.next([...productos]);
       this.persistirProductos();
     }
@@ -745,15 +815,17 @@ export class DatabaseService {
   }
 
   getVentaById(id: number): Venta | undefined {
-    return this.ventasSubject.value.find(v => v.id === id);
+    const ventaId = Number(id);
+    return this.ventasSubject.value.find(v => Number(v.id) === ventaId);
   }
 
   crearVenta(venta: Venta): boolean {
     const ventas = this.ventasSubject.value;
-    venta.id = Math.max(...ventas.map(v => v.id || 0)) + 1;
+    const maxId = ventas.length ? Math.max(...ventas.map(v => Number(v.id) || 0)) : 0;
+    venta.id = maxId + 1;
     for (const vp of venta.productos) {
       const p = this.getProductoById(vp.productoId);
-      if (!p || (p.stock - vp.cantidad) < 0) {
+      if (!p) {
         return false;
       }
     }
@@ -787,19 +859,22 @@ export class DatabaseService {
     return true;
   }
 
-  eliminarVenta(id: number, restock: boolean = true): void {
-    const venta = this.getVentaById(id);
-    if (!venta) return;
+  eliminarVenta(id: number, restock: boolean = true): boolean {
+    const ventaId = Number(id);
+    if (!Number.isFinite(ventaId) || ventaId <= 0) return false;
+    const venta = this.getVentaById(ventaId);
+    if (!venta) return false;
     if (restock) {
       for (const vp of venta.productos) {
         this.actualizarStock(vp.productoId, vp.cantidad);
       }
     }
-    const ventas = this.ventasSubject.value.filter(v => v.id !== id);
+    const ventas = this.ventasSubject.value.filter(v => Number(v.id) !== ventaId);
     this.ventasSubject.next(ventas);
     this.persistirVentas();
     this.persistirSqliteKv('productos', this.productosSubject.value);
     this.persistirSqliteKv('ventas', this.ventasSubject.value);
+    return true;
   }
 
   buscarProductos(termino: string): Producto[] {
@@ -812,7 +887,7 @@ export class DatabaseService {
   }
 
   getProductosBajoStock(): Producto[] {
-    return this.productosSubject.value.filter(p => p.stock <= p.stockMinimo);
+    return this.productosSubject.value.filter(p => p.stockMinimo > 0 && p.stock <= p.stockMinimo);
   }
 
   getVentasPorFecha(fechaInicio: Date, fechaFin: Date): Venta[] {
