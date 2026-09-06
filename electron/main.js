@@ -51,15 +51,61 @@ function resolveAppRootDir() {
   return path.join(app.getPath("documents"), DATA_DIR_NAME);
 }
 
-function resolveGoogleDriveRoots() {
+function uniqueExistingPaths(paths) {
+  const seen = new Set();
+  const out = [];
+  for (const p of paths) {
+    if (!p) continue;
+    const key = String(p).replace(/[\\/]+$/, "").toLowerCase();
+    if (seen.has(key)) continue;
+    try {
+      if (fs.existsSync(p)) {
+        seen.add(key);
+        out.push(p);
+      }
+    } catch {}
+  }
+  return out;
+}
+
+function collectGoogleDriveCandidates() {
   const home = app.getPath("home");
+  const localApp = process.env.LOCALAPPDATA || "";
+  const folderNames = ["My Drive", "Mi unidad", "Google Drive"];
   const candidates = [
     path.join(home, "Google Drive"),
     path.join(home, "Google Drive", "My Drive"),
+    path.join(home, "Google Drive", "Mi unidad"),
     path.join(home, "My Drive"),
-    path.join(process.env.LOCALAPPDATA || "", "Google", "Drive", "My Drive"),
+    path.join(home, "Mi unidad"),
+    path.join(localApp, "Google", "Drive", "My Drive"),
+    path.join(localApp, "Google", "Drive", "Mi unidad"),
   ];
-  return candidates.filter((p) => p && fs.existsSync(p));
+
+  for (const name of folderNames) {
+    for (const letter of "DEFGHIJKLMNOPQRSTUVWXYZ") {
+      candidates.push(`${letter}:\\${name}`);
+    }
+  }
+
+  try {
+    const driveFs = path.join(localApp, "Google", "DriveFS");
+    if (fs.existsSync(driveFs)) {
+      for (const entry of fs.readdirSync(driveFs, { withFileTypes: true })) {
+        if (!entry.isDirectory() || entry.name.length < 8) continue;
+        const accountDir = path.join(driveFs, entry.name);
+        for (const name of folderNames) {
+          candidates.push(path.join(accountDir, name));
+        }
+      }
+    }
+  } catch {}
+
+  return uniqueExistingPaths(candidates);
+}
+
+function resolveGoogleDriveRoots() {
+  return collectGoogleDriveCandidates();
 }
 
 function resolveCloudBackupDir() {
@@ -130,8 +176,10 @@ async function runBackup() {
       fs.copyFileSync(localPath, cloudPath);
       pruneBackupDir(cloudDir);
       result.cloudOk = true;
+      console.log("[main] Backup nube en", cloudDir);
     } else {
       result.error = "Google Drive no detectado";
+      console.warn("[main] Google Drive no detectado. Rutas buscadas no encontradas.");
     }
   } catch (e) {
     result.error = e?.message || String(e);
@@ -354,6 +402,9 @@ app.whenReady().then(() => {
   initDatabase();
   createWindow();
   scheduleDailyBackup();
+  setTimeout(() => {
+    runBackup().catch((e) => console.error("[main] backup inicial", e));
+  }, 2500);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {

@@ -32,7 +32,9 @@ export class IconComponent {
     | 'trash'
     | 'user'
     | 'download'
-    | 'x' = 'info';
+    | 'x'
+    | 'eye'
+    | 'eye-off' = 'info';
   @Input() size = 22;
   @Input() color?: string;
 }

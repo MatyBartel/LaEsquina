@@ -2,13 +2,15 @@ import { Component, OnDestroy, OnInit, inject } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { IconComponent } from '../icon/icon.component';
 import { FormsModule } from '@angular/forms';
-import { DatabaseService, Producto, Venta, VentaProducto, PagoVenta } from '../../services/database.service';
+import { DatabaseService, Producto, Venta, VentaProducto, PagoVenta, TipoVenta } from '../../services/database.service';
 import { BarcodeScannerService } from '../../services/barcode-scanner.service';
 import { Subscription } from 'rxjs';
 import { ToastService } from '../../services/toast.service';
 import { BRAND } from '../../config/brand.config';
 type VentaProductoExt = VentaProducto & { editCantidad?: string };
 type PagoVentaExt = PagoVenta & { montoStr?: string };
+
+const PANEL_ULTIMAS_KEY = 'la-esquina-ventas-panel-ultimas';
 
 @Component({
   selector: 'app-ventas',
@@ -37,6 +39,8 @@ export class VentasComponent implements OnInit, OnDestroy {
   nuevoVendedorNombre: string = '';
   mostrarNuevoVendedor = false;
   mostrarResumenVenta = false;
+  mostrarPanelUltimas = true;
+  productoDetalle: Producto | null = null;
   ahora: Date = new Date();
   aplicarRedondeo = false;
   totalManualStr: string = '';
@@ -60,6 +64,7 @@ export class VentasComponent implements OnInit, OnDestroy {
   clearTotalManual(): void { this.totalManualStr = ''; this.editTotalManual = false; }
 
   ngOnInit(): void {
+    this.cargarPreferenciaPanelUltimas();
     this.sub = this.db.getProductos().subscribe(items => (this.productos = items));
     this.subVentas = this.db.getVentas().subscribe(() => {
       this.ventasRevision++;
@@ -90,7 +95,7 @@ export class VentasComponent implements OnInit, OnDestroy {
   }
 
   get escaneoEnPausa(): boolean {
-    return this.mostrarResumenVenta || !!this.ventaAEliminar || this.entradaManualEnVentas();
+    return this.mostrarResumenVenta || !!this.ventaAEliminar || !!this.productoDetalle || this.entradaManualEnVentas();
   }
 
   private escaneoPausado(): boolean {
@@ -174,26 +179,32 @@ export class VentasComponent implements OnInit, OnDestroy {
   }
   trackByProductoCatalogo(_i: number, p: Producto): number | string { return p.id || p.codigo; }
 
-  // Paginación del carrito (productos en la venta)
-  pageCarrito = 1;
-  pageSizeCarrito = 6;
-  get carritoPaginado(): VentaProductoExt[] {
-    const arr = this.carrito || [];
-    const total = arr.length;
-    const max = Math.max(1, Math.ceil(total / this.pageSizeCarrito));
-    if (this.pageCarrito > max) this.pageCarrito = max;
-    const start = (this.pageCarrito - 1) * this.pageSizeCarrito;
-    return arr.slice(start, start + this.pageSizeCarrito);
+  private cargarPreferenciaPanelUltimas(): void {
+    try {
+      const raw = localStorage.getItem(PANEL_ULTIMAS_KEY);
+      if (raw === '0') this.mostrarPanelUltimas = false;
+    } catch {}
   }
-  get totalItemsCarrito(): number { return (this.carrito || []).length; }
-  get paginaDesdeCarrito(): number { return this.totalItemsCarrito ? ((this.pageCarrito - 1) * this.pageSizeCarrito + 1) : 0; }
-  get paginaHastaCarrito(): number {
-    const fin = this.pageCarrito * this.pageSizeCarrito;
-    return fin > this.totalItemsCarrito ? this.totalItemsCarrito : fin;
+
+  togglePanelUltimas(): void {
+    this.mostrarPanelUltimas = !this.mostrarPanelUltimas;
+    try {
+      localStorage.setItem(PANEL_ULTIMAS_KEY, this.mostrarPanelUltimas ? '1' : '0');
+    } catch {}
   }
-  goToPageCarrito(p: number): void {
-    const max = Math.max(1, Math.ceil(this.totalItemsCarrito / this.pageSizeCarrito));
-    this.pageCarrito = Math.max(1, Math.min(max, Math.trunc(p)));
+
+  verInfoProducto(p: Producto): void {
+    this.productoDetalle = p;
+  }
+
+  cerrarInfoProducto(): void {
+    this.productoDetalle = null;
+  }
+
+  etiquetaTipoVenta(tipo: TipoVenta): string {
+    if (tipo === 'kg') return 'Por kilo';
+    if (tipo === 'litro') return 'Por litro';
+    return 'Por unidad';
   }
 
   agregarAlCarrito(p: Producto, opts?: { silencioso?: boolean }): boolean {
@@ -333,6 +344,10 @@ export class VentasComponent implements OnInit, OnDestroy {
   }
 
   quitarPago(p: PagoVenta): void {
+    if (this.pagos.length <= 1) {
+      this.toast.show('Tiene que quedar al menos un medio de pago para poder cerrar la venta.', 'warning');
+      return;
+    }
     this.pagos = this.pagos.filter(x => x !== p);
   }
 

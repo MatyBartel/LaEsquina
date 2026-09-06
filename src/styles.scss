@@ -25,14 +25,10 @@ app-root {
   background-image: var(--brand-bg-gradient) !important;
 }
 
-/* Escala responsiva para 1366x768: reduce padding, fuentes y grillas en pantallas bajas */
+/* Escala responsiva para 1366x768: reduce padding y fuentes, mantiene 3 columnas */
 @media (max-width: 1366px), (max-height: 820px) {
   html, body { font-size: 14px; }
-  .ventas-container .layout { grid-template-columns: 1fr; }
   .ventas-container .catalogo, .ventas-container .carrito, .ventas-container .ultimas { padding: 12px; }
-  .ventas-container .catalogo .lista { max-height: 420px; }
-  .ventas-container .carrito .tabla-wrapper { max-height: 220px; }
-  .ventas-container .ultimas .ultimas-list { max-height: 340px; }
   .stock-container { padding: 12px; }
   .tabla-wrapper { max-height: calc(100vh - 280px); }
 }

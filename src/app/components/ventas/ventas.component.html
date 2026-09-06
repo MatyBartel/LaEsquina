@@ -1,4 +1,15 @@
 <div class="ventas-container">
+  <button
+    *ngIf="!mostrarPanelUltimas"
+    type="button"
+    class="toggle-historial-top"
+    (click)="togglePanelUltimas()"
+    title="Mostrar historial de ventas"
+  >
+    <app-icon name="eye" [size]="28" color="#357A8F"></app-icon>
+    Mostrar historial
+  </button>
+
   <div class="ventas-header">
     <h1>Gestión de Ventas</h1>
     <div class="scan-status" [class.pausado]="escaneoEnPausa" *ngIf="escaneoActivo">
@@ -6,7 +17,7 @@
       <span>{{ escaneoEnPausa ? 'Escáner en pausa' : 'Escáner listo' }}</span>
     </div>
   </div>
-  <div class="layout">
+  <div class="layout" [class.sin-ultimas]="!mostrarPanelUltimas">
     <section class="catalogo">
       <div class="busqueda">
         <div class="search">
@@ -16,6 +27,9 @@
         </div>
       </div>
       <ul class="lista">
+        <li *ngIf="!productosCatalogoPaginados.length" class="lista-vacia">
+          <span>No hay productos para mostrar</span>
+        </li>
         <li *ngFor="let p of productosCatalogoPaginados; trackBy: trackByProductoCatalogo" [class.sin-stock]="(p.stock || 0) <= 0">
           <div class="info">
             <div class="nombre">{{ p.nombre }}</div>
@@ -23,9 +37,13 @@
               {{ p.codigo }} • ${{ p.precio | number:'1.0-0' }}
               • <span class="stock-badge" [class.agotado]="(p.stock || 0) <= 0">Stock: {{ p.stock }}</span>
             </div>
-            <div class="meta desc" *ngIf="p.descripcion">{{ p.descripcion }}</div>
           </div>
-          <button class="add" (click)="agregarAlCarrito(p)"><app-icon name="plus" [size]="18" color="#ffffff"></app-icon></button>
+          <div class="acciones-producto">
+            <button class="info-btn" type="button" (click)="verInfoProducto(p)" title="Ver detalle del producto">
+              <app-icon name="info" [size]="26" color="#357A8F"></app-icon>
+            </button>
+            <button class="add" type="button" (click)="agregarAlCarrito(p)"><app-icon name="plus" [size]="26" color="#ffffff"></app-icon></button>
+          </div>
         </li>
       </ul>
       <div class="paginacion" *ngIf="productosFiltradosTotal > pageSizeCatalogo" style="display:flex;justify-content:space-between;align-items:center;margin-top:6px;">
@@ -54,7 +72,7 @@
           </tr>
         </thead>
         <tbody>
-          <tr *ngFor="let vp of carritoPaginado">
+          <tr *ngFor="let vp of carrito">
             <td>{{ vp.nombre }}</td>
             <td><input class="cantidad-input" type="text" inputmode="decimal" pattern="[0-9.,]*" [(ngModel)]="vp.editCantidad" (ngModelChange)="onCantidadChange(vp, $event)" (blur)="onCantidadBlur(vp)" /></td>
             <td>${{ vp.precioUnitario | number:'1.0-0' }}</td>
@@ -67,54 +85,52 @@
         </tbody>
       </table>
       </div>
-      <div class="paginacion" *ngIf="totalItemsCarrito > pageSizeCarrito" style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:6px;">
-        <span>{{ paginaDesdeCarrito }}–{{ paginaHastaCarrito }} de {{ totalItemsCarrito }}</span>
-        <button class="ghost" (click)="goToPageCarrito(1)" [disabled]="pageCarrito===1">«</button>
-        <button class="ghost" (click)="goToPageCarrito(pageCarrito-1)" [disabled]="pageCarrito===1">Anterior</button>
-        <span class="pill">{{ pageCarrito }}</span>
-        <button class="ghost" (click)="goToPageCarrito(pageCarrito+1)" [disabled]="pageCarrito*pageSizeCarrito>=totalItemsCarrito">Siguiente</button>
-        <button class="ghost" (click)="goToPageCarrito(999999)" [disabled]="pageCarrito*pageSizeCarrito>=totalItemsCarrito">»</button>
+      <div class="carrito-controles">
+        <div class="descuento-box">
+          <label>Descuento (%):</label>
+          <input type="number" min="0" max="100" step="1" [(ngModel)]="descuentoPct" />
+          <div class="chips">
+            <button class="chip" (click)="setDescuento(10)">10%</button>
+            <button class="chip" (click)="setDescuento(15)">15%</button>
+            <button class="chip" (click)="setDescuento(20)">20%</button>
+          </div>
+          <span class="detalle" *ngIf="descuentoMonto">- ${{ descuentoMonto | number:'1.0-0' }}</span>
+        </div>
+        <div class="vendedor-box">
+          <label>Vendedor:</label>
+          <select [(ngModel)]="vendedor">
+            <option *ngFor="let v of vendedores" [ngValue]="v">{{ v }}</option>
+          </select>
+          <button class="icon-btn" type="button" (click)="mostrarNuevoVendedor = !mostrarNuevoVendedor" title="Nuevo vendedor">
+            <app-icon name="plus" [size]="18" color="#357A8F"></app-icon>
+          </button>
+          <button class="icon-btn icon-btn-delete" type="button" (click)="eliminarVendedor(vendedor)" [disabled]="!vendedores.length" title="Eliminar vendedor">
+            <app-icon name="trash" [size]="18" color="#ffffff"></app-icon>
+          </button>
+        </div>
       </div>
-      <div class="vendedor-box">
-        <label>Vendedor:</label>
-        <select [(ngModel)]="vendedor">
-          <option *ngFor="let v of vendedores" [ngValue]="v">{{ v }}</option>
-        </select>
-        <button class="ghost" (click)="mostrarNuevoVendedor = !mostrarNuevoVendedor">+ Nuevo</button>
-        <button class="ghost danger" (click)="eliminarVendedor(vendedor)" [disabled]="!vendedores.length">Eliminar</button>
-      </div>
-      <div class="vendedor-box" *ngIf="mostrarNuevoVendedor">
+      <div class="vendedor-box vendedor-nuevo" *ngIf="mostrarNuevoVendedor">
         <input type="text" [(ngModel)]="nuevoVendedorNombre" placeholder="Nombre de vendedor" />
         <button class="ghost" (click)="agregarVendedor()">Agregar</button>
         <button class="ghost" (click)="mostrarNuevoVendedor=false">Cancelar</button>
       </div>
-      <div class="descuento-box">
-        <label>Descuento (%):</label>
-        <input type="number" min="0" max="100" step="1" [(ngModel)]="descuentoPct" />
-        <div class="chips">
-          <button class="chip" (click)="setDescuento(10)">10%</button>
-          <button class="chip" (click)="setDescuento(15)">15%</button>
-          <button class="chip" (click)="setDescuento(20)">20%</button>
+      <div class="carrito-cierre">
+      <div class="total-block">
+        <div class="total" *ngIf="redondeoCarrito > 0 && totalManual === 0">Redondeo: ${{ redondeoCarrito | number:'1.0-0' }}</div>
+        <div class="total editable-total" *ngIf="!editTotalManual" (dblclick)="startEditTotal()" title="Doble clic para editar">
+          Total: ${{ totalConRedondeo | number:'1.0-0' }}
         </div>
-        <span class="detalle" *ngIf="descuentoMonto">- ${{ descuentoMonto | number:'1.0-0' }}</span>
-      </div>
-      <div class="descuento-box" style="justify-content:flex-end">
-        <label>
+        <div class="total editable-total" *ngIf="editTotalManual" style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
+          <span>Total:</span>
+          <span>$</span>
+          <input class="total-input" type="text" [ngModel]="totalManualStr" (ngModelChange)="totalManualStr=$event" (input)="onTotalManualInput($event)" (blur)="finishEditTotal()" (keyup.enter)="finishEditTotal()" placeholder="0" />
+          <button class="chip" (click)="clearTotalManual()">Limpiar</button>
+        </div>
+        <label class="redondeo-check">
           <input type="checkbox" [(ngModel)]="aplicarRedondeo" /> Aplicar redondeo al total
         </label>
+        <div class="total vuelto" *ngIf="vuelto > 0">Vuelto: ${{ vuelto | number:'1.0-0' }}</div>
       </div>
-      <div class="total" *ngIf="redondeoCarrito > 0 && totalManual === 0">Redondeo: ${{ redondeoCarrito | number:'1.0-0' }}</div>
-      <div class="total editable-total" *ngIf="!editTotalManual" (dblclick)="startEditTotal()" title="Doble clic para editar">
-        Total: ${{ totalConRedondeo | number:'1.0-0' }}
-      </div>
-      <div class="total editable-total" *ngIf="editTotalManual" style="display:flex;align-items:center;gap:6px;justify-content:flex-end">
-        <span>Total:</span>
-        <span>$</span>
-        <input class="total-input" type="text" [ngModel]="totalManualStr" (ngModelChange)="totalManualStr=$event" (input)="onTotalManualInput($event)" (blur)="finishEditTotal()" (keyup.enter)="finishEditTotal()" placeholder="0" />
-        <button class="chip" (click)="clearTotalManual()">Limpiar</button>
-      </div>
-      <div class="total vuelto" *ngIf="vuelto > 0">Vuelto: ${{ vuelto | number:'1.0-0' }}</div>
-
       <div class="pagos">
         <h3>Pagos</h3>
         <div class="pago-cards">
@@ -129,9 +145,9 @@
                   <option>Otro</option>
                 </select>
               </div>
-              <div class="monto" style="display:flex;align-items:center;gap:6px;max-width:180px;">
+              <div class="monto">
                 <span>$</span>
-                <input type="text" inputmode="numeric" [(ngModel)]="p.montoStr" (input)="onPagoInput(p, $event)" (blur)="onPagoBlur(p)" placeholder="Monto" style="width:100%" />
+                <input type="text" inputmode="numeric" [(ngModel)]="p.montoStr" (input)="onPagoInput(p, $event)" (blur)="onPagoBlur(p)" placeholder="Monto" />
               </div>
               <button class="btn-faltante" (click)="rellenarPago(p)">Rellenar</button>
               <button class="ghost danger" (click)="quitarPago(p)">Eliminar</button>
@@ -150,14 +166,20 @@
           </div>
         </div>
       </div>
-
-      <div class="acciones">
-        <button class="primario" (click)="abrirResumenVenta()">Confirmar venta</button>
+      </div>
+      <div class="carrito-footer">
+        <button class="primario btn-confirmar" (click)="abrirResumenVenta()">Confirmar venta</button>
       </div>
     </section>
 
-    <section class="ultimas">
-      <h2>{{ fechaSeleccionada ? ('Ventas del ' + fechaSeleccionada) : 'Últimas 24 horas' }}</h2>
+    <section class="ultimas" *ngIf="mostrarPanelUltimas">
+      <div class="ultimas-header">
+        <h2>{{ fechaSeleccionada ? ('Ventas del ' + fechaSeleccionada) : 'Últimas 24 horas' }}</h2>
+        <button type="button" class="panel-toggle panel-toggle-light" (click)="togglePanelUltimas()" title="Ocultar historial">
+          <app-icon name="eye-off" [size]="28" color="#357A8F"></app-icon>
+          Ocultar
+        </button>
+      </div>
       <div class="filtros-fecha">
         <label class="dia-label">Buscar por día:</label>
         <div class="dia-picker">
@@ -180,6 +202,7 @@
         </div>
       </div>
       <div class="ultimas-list">
+      <div class="lista-vacia" *ngIf="!ventasDelDiaPaginadas.length">No hay ventas para mostrar</div>
       <div class="venta" *ngFor="let v of ventasDelDiaPaginadas">
         <div class="cab">
           <span class="num">{{ v.numeroTicket }}</span>
@@ -224,7 +247,27 @@
       </div>
     </section>
 
-    
+    <div class="modal-backdrop" *ngIf="productoDetalle" (click)="cerrarInfoProducto()"></div>
+    <div class="modal modal-producto" *ngIf="productoDetalle">
+      <div class="modal-header">
+        <h3>{{ productoDetalle!.nombre }}</h3>
+        <button type="button" class="close" (click)="cerrarInfoProducto()">×</button>
+      </div>
+      <div class="modal-body">
+        <div class="row"><strong>Código:</strong> {{ productoDetalle!.codigo }}</div>
+        <div class="row" *ngIf="productoDetalle!.codigoBarras"><strong>Código de barras:</strong> {{ productoDetalle!.codigoBarras }}</div>
+        <div class="row"><strong>Categoría:</strong> {{ productoDetalle!.categoria || '—' }}</div>
+        <div class="row"><strong>Proveedor:</strong> {{ productoDetalle!.proveedor || '—' }}</div>
+        <div class="row"><strong>Tipo de venta:</strong> {{ etiquetaTipoVenta(productoDetalle!.tipoVenta) }}</div>
+        <div class="row"><strong>Precio:</strong> ${{ productoDetalle!.precio | number:'1.0-0' }}</div>
+        <div class="row"><strong>Stock:</strong> {{ productoDetalle!.stock }}</div>
+        <div class="row descripcion-row"><strong>Descripción:</strong> {{ productoDetalle!.descripcion || 'Sin descripción' }}</div>
+      </div>
+      <div class="modal-actions">
+        <button type="button" class="btn-light" (click)="cerrarInfoProducto()">Cerrar</button>
+      </div>
+    </div>
+
     <div class="modal-backdrop" *ngIf="ventaAEliminar" (click)="cancelarEliminarVenta()"></div>
     <div class="modal" *ngIf="ventaAEliminar">
       <div class="modal-header">

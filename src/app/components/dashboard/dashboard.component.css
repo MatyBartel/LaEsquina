@@ -76,17 +76,24 @@
   filter: drop-shadow(0 6px 14px rgba(0,0,0,0.15));
 }
 
-.stat-content { flex: 1; min-width: 0; }
+.stat-content {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
 
 .stat-content h3 {
   margin: 0;
-  font-size: 50px;
+  font-size: clamp(1.15rem, 2.2vw, 2.5rem);
+  line-height: 1.15;
   color: var(--brand-primary-dark);
   font-weight: bold;
+  overflow-wrap: anywhere;
+  word-break: break-word;
 }
 
-.ventas-hoy .stat-content h3 {
-  font-size: clamp(1.1rem, 1.8vw, 2.2rem);
+.stat-content p {
+  overflow-wrap: anywhere;
 }
 
 .stat-content p {
